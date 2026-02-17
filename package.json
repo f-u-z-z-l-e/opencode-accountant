@@ -1,5 +1,5 @@
 {
-  "name": "opencode-accountant",
+  "name": "@fuzzle/opencode-accountant",
   "version": "0.0.1",
   "description": "An OpenCode accounting agent, specialized in double-entry-bookkepping with hledger",
   "author": {
