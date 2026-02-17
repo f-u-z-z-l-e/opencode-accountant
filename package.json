@@ -1,0 +1,40 @@
+{
+  "name": "opencode-accountant",
+  "version": "0.0.1",
+  "description": "An OpenCode accounting agent, specialized in double-entry-bookkepping with hledger",
+  "author": {
+    "name": "ali bengali",
+    "email": "ali.bengali@fuzzle.ch"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:f-u-z-z-l-e/opencode-accountant.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "src/version.ts"
+  ],
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^20.11.5",
+    "@typescript-eslint/eslint-plugin": "8.47.0",
+    "@typescript-eslint/parser": "8.47.0",
+    "bun-types": "latest",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-prettier": "^5.1.3",
+    "prettier": "^3.2.4",
+    "typescript-eslint": "^8.47.0",
+    "vitest": "^3.2.4"
+  }
+}
