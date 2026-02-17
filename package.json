@@ -22,9 +22,14 @@
   },
   "files": [
     "dist",
-    "src/version.ts"
+    "agent"
   ],
+  "dependencies": {
+    "@opencode-ai/plugin": "latest",
+    "js-yaml": "^4.1.0"
+  },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@eslint/js": "^9.39.1",
     "@types/node": "^20.11.5",
     "@typescript-eslint/eslint-plugin": "8.47.0",
