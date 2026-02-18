@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.3](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.2...v0.0.3) (2026-02-18)
+
+
+### Bug Fixes
+
+* add update prices tool ([69bf774](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/69bf774363f52d0c5d4e72e47fd140016bd23292))
+* simplify agent loading ([3b4e817](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/3b4e8171964ae42e32c3f0656569b9eb2ee912ac))
+
 ## [0.0.2](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.1...v0.0.2) (2026-02-17)
 
 
