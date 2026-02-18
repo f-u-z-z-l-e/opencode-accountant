@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadAgents } from './loaders';
+import { loadAgent } from './agentLoader.ts';
 
-describe('loadAgents', () => {
+describe('loadAgent', () => {
   const TEST_DIR = join(process.cwd(), '.memory', 'test-agents');
 
   beforeAll(() => {
@@ -36,10 +36,10 @@ You are a helpful accounting assistant.`;
   });
 
   it('should load a valid agent file with all fields', () => {
-    const agents = loadAgents(TEST_DIR);
+    const agent = loadAgent(join(TEST_DIR, 'test-agent.md'));
 
-    expect(agents).toHaveProperty('test-agent');
-    expect(agents['test-agent']).toEqual({
+    expect(agent).not.toBeNull();
+    expect(agent).toEqual({
       description: 'A test agent for accounting tasks',
       mode: 'primary',
       model: 'claude-sonnet-4',
