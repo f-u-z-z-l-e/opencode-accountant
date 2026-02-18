@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.4](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.3...v0.0.4) (2026-02-18)
+
+
+### Bug Fixes
+
+* accounting agent reference to accountant ([084eb33](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/084eb33b3b41d9ba1289854f3c7651dbc4c6e17c))
+
 ## [0.0.3](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.2...v0.0.3) (2026-02-18)
 
 
