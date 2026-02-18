@@ -51,7 +51,7 @@ function updateJournalWithPrices(journalPath: string, newPriceLines: string[]): 
 
 export default tool({
   description:
-    'ACCOUNTING AGENT ONLY: Fetches end-of-day prices for all tickers (BTC, EUR, USD in CHF) and appends them to the corresponding price journals.',
+    'ACCOUNTANT AGENT ONLY: Fetches end-of-day prices for all tickers (BTC, EUR, USD in CHF) and appends them to the corresponding price journals.',
   args: {
     backfill: tool.schema
       .boolean()
@@ -63,10 +63,10 @@ export default tool({
     const { backfill } = params;
 
     // Agent restriction
-    if (agent !== 'accounting') {
+    if (agent !== 'accountant') {
       return JSON.stringify({
-        error: 'This tool is restricted to the accounting agent only.',
-        hint: "Use: Task(subagent_type='accounting', prompt='update prices')",
+        error: 'This tool is restricted to the accountant agent only.',
+        hint: "Use: Task(subagent_type='accountant', prompt='update prices')",
         caller: agent || 'main assistant',
       });
     }
