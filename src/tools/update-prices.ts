@@ -24,6 +24,35 @@ function getYesterday(): string {
   return d.toISOString().split('T')[0];
 }
 
+// Parse a price line and extract date for filtering (keeps original line intact)
+// Input: "P 2025-02-17 00:00:00 EUR 0.944 CHF"
+// Output: { date: "2025-02-17", formattedLine: "P 2025-02-17 00:00:00 EUR 0.944 CHF" }
+export function parsePriceLine(line: string): { date: string; formattedLine: string } | null {
+  const match = line.match(/^P (\d{4}-\d{2}-\d{2})(?: \d{2}:\d{2}:\d{2})? .+$/);
+  if (!match) return null;
+  return {
+    date: match[1],
+    formattedLine: line, // Keep original line including timestamp
+  };
+}
+
+// Filter price lines to only include dates within the requested range
+// Also strips timestamps and sorts by date
+export function filterPriceLinesByDateRange(
+  priceLines: string[],
+  startDate: string,
+  endDate: string
+): string[] {
+  return priceLines
+    .map(parsePriceLine)
+    .filter((parsed): parsed is NonNullable<typeof parsed> => {
+      if (!parsed) return false;
+      return parsed.date >= startDate && parsed.date <= endDate;
+    })
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((parsed) => parsed.formattedLine);
+}
+
 function updateJournalWithPrices(journalPath: string, newPriceLines: string[]): void {
   // Read existing lines (or empty array if file doesn't exist)
   let existingLines: string[] = [];
@@ -117,12 +146,23 @@ export async function updatePricesCore(
       const output = await priceFetcher(cmdArgs);
 
       // Split output into lines and filter for price lines only
-      const priceLines = output.split('\n').filter((line) => line.startsWith('P '));
+      const rawPriceLines = output.split('\n').filter((line) => line.startsWith('P '));
+
+      if (rawPriceLines.length === 0) {
+        results.push({
+          ticker,
+          error: `No price lines in pricehist output: ${output}`,
+        });
+        continue;
+      }
+
+      // Filter to requested date range and reformat (strips timestamp if present)
+      const priceLines = filterPriceLinesByDateRange(rawPriceLines, startDate, endDate);
 
       if (priceLines.length === 0) {
         results.push({
           ticker,
-          error: `No price lines in pricehist output: ${output}`,
+          error: `No price data found within date range ${startDate} to ${endDate}`,
         });
         continue;
       }
