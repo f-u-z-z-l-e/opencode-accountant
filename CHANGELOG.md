@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.6](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.5...v0.0.6) (2026-02-19)
+
+
+### Bug Fixes
+
+* update-prices to respect backfill feature ([bcf1ca5](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/bcf1ca521c5b5c0411e1ea40aa7450a3864e43c7))
+
 ## [0.0.5](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.4...v0.0.5) (2026-02-19)
 
 
