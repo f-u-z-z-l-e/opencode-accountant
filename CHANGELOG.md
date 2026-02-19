@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.5](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.4...v0.0.5) (2026-02-19)
+
+
+### Bug Fixes
+
+* refactor update-prices tool ([b01e0fe](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/b01e0fe8b60fea59a7061f36054e65b35fcdefd1))
+* update directory location in update-prices ([b8a4b26](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/b8a4b26fdf5f15cfd31085617979feb14ac53855))
+
 ## [0.0.4](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.3...v0.0.4) (2026-02-18)
 
 
