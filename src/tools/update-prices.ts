@@ -2,9 +2,14 @@ import { tool } from '@opencode-ai/plugin';
 import { $ } from 'bun';
 import * as path from 'path';
 import * as fs from 'fs';
+import {
+  loadPricesConfig,
+  getDefaultBackfillDate,
+  type PricesConfig,
+} from '../utils/pricesConfig.ts';
 
-// Type for the price fetcher function
-export type PriceFetcher = (_cmdArgs: string[]) => Promise<string>;
+// eslint-disable-next-line no-unused-vars
+export type PriceFetcher = (args: string[]) => Promise<string>;
 
 // Default implementation using Bun's shell
 export async function defaultPriceFetcher(cmdArgs: string[]): Promise<string> {
@@ -12,12 +17,6 @@ export async function defaultPriceFetcher(cmdArgs: string[]): Promise<string> {
   const result = await $`pricehist ${cmdArgs}`.quiet();
   return result.stdout.toString().trim();
 }
-
-const TICKERS: Record<string, { source: string; pair: string; file: string; fmtBase?: string }> = {
-  BTC: { source: 'coinmarketcap', pair: 'BTC/CHF', file: 'btc-chf.journal' },
-  EUR: { source: 'ecb', pair: 'EUR/CHF', file: 'eur-chf.journal' },
-  USD: { source: 'yahoo', pair: 'USDCHF=X', file: 'usd-chf.journal', fmtBase: 'USD' },
-};
 
 function getYesterday(): string {
   const d = new Date();
@@ -64,7 +63,9 @@ export async function updatePricesCore(
   directory: string,
   agent: string,
   backfill: boolean,
-  priceFetcher: PriceFetcher = defaultPriceFetcher
+  priceFetcher: PriceFetcher = defaultPriceFetcher,
+  // eslint-disable-next-line no-unused-vars
+  configLoader: (directory: string) => PricesConfig = loadPricesConfig
 ): Promise<string> {
   // Agent restriction
   if (agent !== 'accountant') {
@@ -75,14 +76,27 @@ export async function updatePricesCore(
     });
   }
 
+  // Load configuration
+  let config: PricesConfig;
+  try {
+    config = configLoader(directory);
+  } catch (err) {
+    return JSON.stringify({
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   const endDate = getYesterday();
-  const startDate = backfill ? '2025-12-31' : endDate;
+  const defaultBackfillDate = getDefaultBackfillDate();
   const results: Array<
     { ticker: string; priceLine: string; file: string } | { ticker: string; error: string }
   > = [];
 
-  for (const [ticker, config] of Object.entries(TICKERS)) {
+  for (const [ticker, currencyConfig] of Object.entries(config.currencies)) {
     try {
+      // Determine start date: use per-currency backfill_date, default backfill date, or just today
+      const startDate = backfill ? currencyConfig.backfill_date || defaultBackfillDate : endDate;
+
       // Build pricehist command arguments
       const cmdArgs = [
         'fetch',
@@ -92,11 +106,11 @@ export async function updatePricesCore(
         startDate,
         '-e',
         endDate,
-        config.source,
-        config.pair,
+        currencyConfig.source,
+        currencyConfig.pair,
       ];
-      if (config.fmtBase) {
-        cmdArgs.push('--fmt-base', config.fmtBase);
+      if (currencyConfig.fmt_base) {
+        cmdArgs.push('--fmt-base', currencyConfig.fmt_base);
       }
 
       // Execute pricehist using the injected fetcher
@@ -114,7 +128,7 @@ export async function updatePricesCore(
       }
 
       // Update journal file with deduplication
-      const journalPath = path.join(directory, 'ledger', 'currencies', config.file);
+      const journalPath = path.join(directory, 'ledger', 'currencies', currencyConfig.file);
       updateJournalWithPrices(journalPath, priceLines);
 
       // Return the last (most recent) price line
@@ -122,7 +136,7 @@ export async function updatePricesCore(
       results.push({
         ticker,
         priceLine: latestPriceLine,
-        file: config.file,
+        file: currencyConfig.file,
       });
     } catch (err) {
       results.push({
@@ -134,7 +148,6 @@ export async function updatePricesCore(
 
   return JSON.stringify({
     success: results.every((r) => !('error' in r)),
-    startDate,
     endDate,
     backfill: !!backfill,
     results,
@@ -143,12 +156,14 @@ export async function updatePricesCore(
 
 export default tool({
   description:
-    'ACCOUNTANT AGENT ONLY: Fetches end-of-day prices for all tickers (BTC, EUR, USD in CHF) and appends them to the corresponding price journals.',
+    'ACCOUNTANT AGENT ONLY: Fetches end-of-day prices for all configured currencies (from config/prices.yaml) and appends them to the corresponding price journals in ledger/currencies/.',
   args: {
     backfill: tool.schema
       .boolean()
       .optional()
-      .describe('If true, fetch all available history from 2025-12-31'),
+      .describe(
+        "If true, fetch history from each currency's configured backfill_date (or Jan 1 of current year if not specified)"
+      ),
   },
   async execute(params, context) {
     const { directory, agent } = context;

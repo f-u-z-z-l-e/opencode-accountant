@@ -1,15 +1,50 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { updatePricesCore } from './update-prices.ts';
+import { getDefaultBackfillDate } from '../utils/pricesConfig.ts';
 
 describe('update-prices tool', () => {
   const testDir = path.join(process.cwd(), '.memory', 'test-update-prices');
   const ledgerDir = path.join(testDir, 'ledger', 'currencies');
+  const configDir = path.join(testDir, 'config');
+
+  // Standard test config with all three currencies
+  const standardConfig = `currencies:
+  BTC:
+    source: coinmarketcap
+    pair: BTC/CHF
+    file: btc-chf.journal
+    backfill_date: "2025-12-31"
+  EUR:
+    source: ecb
+    pair: EUR/CHF
+    file: eur-chf.journal
+    backfill_date: "2025-06-01"
+  USD:
+    source: yahoo
+    pair: USDCHF=X
+    file: usd-chf.journal
+    fmt_base: USD
+`;
 
   beforeAll(() => {
     // Create test directory structure
     fs.mkdirSync(ledgerDir, { recursive: true });
+    fs.mkdirSync(configDir, { recursive: true });
+  });
+
+  beforeEach(() => {
+    // Write standard config before each test
+    fs.writeFileSync(path.join(configDir, 'prices.yaml'), standardConfig);
+
+    // Clean up any existing journal files
+    for (const file of ['btc-chf.journal', 'eur-chf.journal', 'usd-chf.journal']) {
+      const filePath = path.join(ledgerDir, file);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
   });
 
   afterAll(() => {
@@ -27,7 +62,19 @@ describe('update-prices tool', () => {
     expect(parsed.error).toContain('restricted to the accountant agent');
   });
 
-  it('should write price files to ledger/currencies/ directory for all tickers', async () => {
+  it('should return error when config file is missing', async () => {
+    const emptyDir = path.join(testDir, 'empty-project');
+    fs.mkdirSync(emptyDir, { recursive: true });
+
+    const result = await updatePricesCore(emptyDir, 'accountant', false);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.error).toBeDefined();
+    expect(parsed.error).toContain('Configuration file not found');
+    expect(parsed.error).toContain("plugin's GitHub repository");
+  });
+
+  it('should write price files to ledger/currencies/ directory for all configured tickers', async () => {
     // Mock pricehist responses with real data format
     const mockPriceFetcher = async (cmdArgs: string[]): Promise<string> => {
       // The pair is the last arg, but for USD with --fmt-base, it's before the last two args
@@ -84,7 +131,9 @@ describe('update-prices tool', () => {
     );
 
     const mockPriceFetcher = async (cmdArgs: string[]): Promise<string> => {
-      const pair = cmdArgs[cmdArgs.length - 1];
+      const pairIndex =
+        cmdArgs.indexOf('--fmt-base') !== -1 ? cmdArgs.length - 3 : cmdArgs.length - 1;
+      const pair = cmdArgs[pairIndex];
 
       if (pair === 'BTC/CHF') {
         // Return price for 2026-02-18 (middle date) - should be inserted in order
@@ -109,11 +158,60 @@ describe('update-prices tool', () => {
     expect(lines[2]).toContain('2026-02-19'); // Newest last
   });
 
-  it('should use correct date range for backfill mode', async () => {
-    let capturedStartDate = '';
+  it('should use per-currency backfill_date when backfill mode is enabled', async () => {
+    const capturedDates: Record<string, string> = {};
 
     const mockPriceFetcher = async (cmdArgs: string[]): Promise<string> => {
       // Find the -s flag and capture the date after it
+      const sIndex = cmdArgs.indexOf('-s');
+      const pairIndex =
+        cmdArgs.indexOf('--fmt-base') !== -1 ? cmdArgs.length - 3 : cmdArgs.length - 1;
+      const pair = cmdArgs[pairIndex];
+
+      if (sIndex !== -1 && sIndex + 1 < cmdArgs.length) {
+        capturedDates[pair] = cmdArgs[sIndex + 1];
+      }
+
+      if (pair === 'BTC/CHF') {
+        return 'P 2026-02-18 00:00:00 BTC 88494.8925094421 CHF';
+      } else if (pair === 'EUR/CHF') {
+        return 'P 2026-02-18 00:00:00 EUR 0.9124 CHF';
+      } else if (pair === 'USDCHF=X') {
+        return 'P 2026-02-18 00:00:00 USD 0.7702000141143799 CHF';
+      }
+      return '';
+    };
+
+    const result = await updatePricesCore(testDir, 'accountant', true, mockPriceFetcher);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.backfill).toBe(true);
+
+    // BTC has backfill_date: "2025-12-31"
+    expect(capturedDates['BTC/CHF']).toBe('2025-12-31');
+
+    // EUR has backfill_date: "2025-06-01"
+    expect(capturedDates['EUR/CHF']).toBe('2025-06-01');
+
+    // USD has no backfill_date, should use default (Jan 1 of current year)
+    expect(capturedDates['USDCHF=X']).toBe(getDefaultBackfillDate());
+  });
+
+  it('should use default backfill date (Jan 1 of current year) when not specified', async () => {
+    // Write config without backfill_date for any currency
+    fs.writeFileSync(
+      path.join(configDir, 'prices.yaml'),
+      `currencies:
+  BTC:
+    source: coinmarketcap
+    pair: BTC/CHF
+    file: btc-chf.journal
+`
+    );
+
+    let capturedStartDate = '';
+
+    const mockPriceFetcher = async (cmdArgs: string[]): Promise<string> => {
       const sIndex = cmdArgs.indexOf('-s');
       if (sIndex !== -1 && sIndex + 1 < cmdArgs.length) {
         capturedStartDate = cmdArgs[sIndex + 1];
@@ -121,11 +219,9 @@ describe('update-prices tool', () => {
       return 'P 2026-02-18 00:00:00 BTC 88494.8925094421 CHF';
     };
 
-    const result = await updatePricesCore(testDir, 'accountant', true, mockPriceFetcher);
-    const parsed = JSON.parse(result);
+    await updatePricesCore(testDir, 'accountant', true, mockPriceFetcher);
 
-    expect(parsed.backfill).toBe(true);
-    expect(parsed.startDate).toBe('2025-12-31');
-    expect(capturedStartDate).toBe('2025-12-31');
+    const expectedDate = getDefaultBackfillDate();
+    expect(capturedStartDate).toBe(expectedDate);
   });
 });
