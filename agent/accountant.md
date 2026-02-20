@@ -34,6 +34,7 @@ permission:
 - `doc/agent/todo/` - Agents task work directory
 - `doc/agent/done/` - Tasks completed by the agent
 - `config/conventions/` - Accounting conventions
+- `config/rules/` - import rules files
 
 ## System Environment
 
