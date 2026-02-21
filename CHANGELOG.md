@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.8](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.7...v0.0.8) (2026-02-21)
+
+
+### Bug Fixes
+
+* add additional classification mode ([81ef842](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/81ef842257852a449a99bfa190f50ccb41530176))
+* update readme file ([416e52e](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/416e52ea26d62f5d0fdaf9520a6db4e7481528f9))
+
 ## [0.0.7](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.6...v0.0.7) (2026-02-21)
 
 
