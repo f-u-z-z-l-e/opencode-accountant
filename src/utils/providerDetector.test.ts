@@ -5,10 +5,10 @@ import type { ImportConfig } from './importConfig.ts';
 describe('providerDetector', () => {
   const mockConfig: ImportConfig = {
     paths: {
-      imports: 'statements/imports',
+      import: 'statements/import',
       pending: 'doc/agent/todo/import',
       done: 'doc/agent/done/import',
-      unrecognized: 'statements/imports/unrecognized',
+      unrecognized: 'statements/import/unrecognized',
     },
     providers: {
       revolut: {
@@ -124,6 +124,168 @@ Transfer,Current,2024-01-19 10:00:00,2024-01-19 10:00:00,Transfer,500.00,0.00,EU
       expect(result).not.toBeNull();
       expect(result!.provider).toBe('revolut');
       expect(result!.currency).toBe('eur'); // Lowercased because not in mapping
+    });
+
+    it('should detect provider with header-only matching (no filenamePattern)', () => {
+      const headerOnlyConfig: ImportConfig = {
+        ...mockConfig,
+        providers: {
+          testbank: {
+            detect: [
+              {
+                // No filenamePattern - header-only matching
+                header: 'Date,Description,Amount,Currency',
+                currencyField: 'Currency',
+              },
+            ],
+            currencies: {
+              CHF: 'chf',
+            },
+          },
+        },
+      };
+
+      const filename = 'any-random-filename.csv';
+      const content = `Date,Description,Amount,Currency
+2023-06-12,Test transaction,100.00,CHF`;
+
+      const result = detectProvider(filename, content, headerOnlyConfig);
+
+      expect(result).not.toBeNull();
+      expect(result!.provider).toBe('testbank');
+      expect(result!.currency).toBe('chf');
+    });
+
+    it('should handle skipRows and custom delimiter', () => {
+      const configWithSkipRows: ImportConfig = {
+        ...mockConfig,
+        providers: {
+          bankwithmetadata: {
+            detect: [
+              {
+                header: 'Date,Description,Amount,Currency',
+                currencyField: 'Currency',
+                skipRows: 3,
+                delimiter: ';',
+              },
+            ],
+            currencies: {
+              CHF: 'chf',
+            },
+          },
+        },
+      };
+
+      const filename = 'export.csv';
+      const content = `Account:;12345;
+From:;2024-01-01;
+To:;2024-12-31;
+Date;Description;Amount;Currency
+2024-01-15;Test;100.00;CHF`;
+
+      const result = detectProvider(filename, content, configWithSkipRows);
+
+      expect(result).not.toBeNull();
+      expect(result!.provider).toBe('bankwithmetadata');
+      expect(result!.currency).toBe('chf');
+    });
+
+    it('should extract metadata and generate outputFilename', () => {
+      const configWithMetadata: ImportConfig = {
+        ...mockConfig,
+        providers: {
+          bankwithmetadata: {
+            detect: [
+              {
+                header: 'Date,Description,Amount,Currency',
+                currencyField: 'Currency',
+                skipRows: 3,
+                delimiter: ';',
+                renamePattern: 'transactions-bank-{accountnumber}.csv',
+                metadata: [
+                  {
+                    field: 'accountnumber',
+                    row: 0,
+                    column: 1,
+                    normalize: 'spaces-to-dashes',
+                  },
+                ],
+              },
+            ],
+            currencies: {
+              CHF: 'chf',
+            },
+          },
+        },
+      };
+
+      const filename = 'export.csv';
+      const content = `Account:;1234 56789.0;
+From:;2024-01-01;
+To:;2024-12-31;
+Date;Description;Amount;Currency
+2024-01-15;Test;100.00;CHF`;
+
+      const result = detectProvider(filename, content, configWithMetadata);
+
+      expect(result).not.toBeNull();
+      expect(result!.provider).toBe('bankwithmetadata');
+      expect(result!.currency).toBe('chf');
+      expect(result!.metadata).toEqual({ accountnumber: '1234-56789.0' });
+      expect(result!.outputFilename).toBe('transactions-bank-1234-56789.0.csv');
+    });
+
+    it('should handle metadata extraction without normalization', () => {
+      const configWithMetadata: ImportConfig = {
+        ...mockConfig,
+        providers: {
+          bankwithmetadata: {
+            detect: [
+              {
+                header: 'Date,Description,Amount,Currency',
+                currencyField: 'Currency',
+                skipRows: 2,
+                delimiter: ';',
+                renamePattern: 'export-{iban}.csv',
+                metadata: [
+                  {
+                    field: 'iban',
+                    row: 1,
+                    column: 1,
+                  },
+                ],
+              },
+            ],
+            currencies: {
+              EUR: 'eur',
+            },
+          },
+        },
+      };
+
+      const filename = 'bank-export.csv';
+      const content = `Account:;12345;
+IBAN:;CH12 3456 7890;
+Date;Description;Amount;Currency
+2024-01-15;Test;100.00;EUR`;
+
+      const result = detectProvider(filename, content, configWithMetadata);
+
+      expect(result).not.toBeNull();
+      expect(result!.metadata).toEqual({ iban: 'CH12 3456 7890' });
+      expect(result!.outputFilename).toBe('export-CH12 3456 7890.csv');
+    });
+
+    it('should return undefined outputFilename when no renamePattern is set', () => {
+      const filename = 'account-statement_2023-06-12_2026-02-11_en-us_c533c6.csv';
+      const content = `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+Deposit,Current,2023-06-12 10:00:00,2023-06-12 10:00:00,Initial deposit,1000.00,0.00,CHF,COMPLETED,1000.00`;
+
+      const result = detectProvider(filename, content, mockConfig);
+
+      expect(result).not.toBeNull();
+      expect(result!.outputFilename).toBeUndefined();
+      expect(result!.metadata).toBeUndefined();
     });
   });
 

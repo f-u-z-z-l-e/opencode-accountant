@@ -2,10 +2,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import yaml from 'js-yaml';
 
+export interface MetadataExtraction {
+  field: string; // Placeholder name to use in renamePattern (e.g., "kontonummer")
+  row: number; // Which row to extract from (0-indexed within skipRows)
+  column: number; // Which column to extract from (0-indexed)
+  normalize?: 'spaces-to-dashes'; // Optional: normalization type
+}
+
 export interface DetectionRule {
-  filenamePattern: string;
+  filenamePattern?: string; // Optional: regex pattern to match filename
   header: string;
   currencyField: string;
+  skipRows?: number; // Optional: rows to skip before header (default: 0)
+  delimiter?: string; // Optional: CSV delimiter (default: ',')
+  renamePattern?: string; // Optional: output filename pattern with placeholders
+  metadata?: MetadataExtraction[]; // Optional: metadata extraction from skipped rows
 }
 
 export interface ProviderConfig {
@@ -14,7 +25,7 @@ export interface ProviderConfig {
 }
 
 export interface ImportPaths {
-  imports: string;
+  import: string;
   pending: string;
   done: string;
   unrecognized: string;
@@ -27,12 +38,8 @@ export interface ImportConfig {
 
 const CONFIG_FILE = 'config/import/providers.yaml';
 
-const REQUIRED_PATH_FIELDS: (keyof ImportPaths)[] = ['imports', 'pending', 'done', 'unrecognized'];
-const REQUIRED_DETECTION_FIELDS: (keyof DetectionRule)[] = [
-  'filenamePattern',
-  'header',
-  'currencyField',
-];
+const REQUIRED_PATH_FIELDS: (keyof ImportPaths)[] = ['import', 'pending', 'done', 'unrecognized'];
+const REQUIRED_DETECTION_FIELDS: (keyof DetectionRule)[] = ['header', 'currencyField'];
 
 /**
  * Validates the paths configuration
@@ -52,7 +59,7 @@ function validatePaths(paths: unknown): ImportPaths {
   }
 
   return {
-    imports: pathsObj.imports as string,
+    import: pathsObj.import as string,
     pending: pathsObj.pending as string,
     done: pathsObj.done as string,
     unrecognized: pathsObj.unrecognized as string,
@@ -80,19 +87,89 @@ function validateDetectionRule(providerName: string, index: number, rule: unknow
     }
   }
 
-  // Validate that filenamePattern is a valid regex
-  try {
-    new RegExp(ruleObj.filenamePattern as string);
-  } catch {
-    throw new Error(
-      `Invalid config: provider '${providerName}' detect[${index}].filenamePattern is not a valid regex`
-    );
+  // Validate optional filenamePattern is a valid regex if present
+  if (ruleObj.filenamePattern !== undefined) {
+    if (typeof ruleObj.filenamePattern !== 'string') {
+      throw new Error(
+        `Invalid config: provider '${providerName}' detect[${index}].filenamePattern must be a string`
+      );
+    }
+    try {
+      new RegExp(ruleObj.filenamePattern);
+    } catch {
+      throw new Error(
+        `Invalid config: provider '${providerName}' detect[${index}].filenamePattern is not a valid regex`
+      );
+    }
+  }
+
+  // Validate optional skipRows
+  if (ruleObj.skipRows !== undefined) {
+    if (typeof ruleObj.skipRows !== 'number' || ruleObj.skipRows < 0) {
+      throw new Error(
+        `Invalid config: provider '${providerName}' detect[${index}].skipRows must be a non-negative number`
+      );
+    }
+  }
+
+  // Validate optional delimiter
+  if (ruleObj.delimiter !== undefined) {
+    if (typeof ruleObj.delimiter !== 'string' || ruleObj.delimiter.length !== 1) {
+      throw new Error(
+        `Invalid config: provider '${providerName}' detect[${index}].delimiter must be a single character`
+      );
+    }
+  }
+
+  // Validate optional renamePattern
+  if (ruleObj.renamePattern !== undefined) {
+    if (typeof ruleObj.renamePattern !== 'string') {
+      throw new Error(
+        `Invalid config: provider '${providerName}' detect[${index}].renamePattern must be a string`
+      );
+    }
+  }
+
+  // Validate optional metadata array
+  if (ruleObj.metadata !== undefined) {
+    if (!Array.isArray(ruleObj.metadata)) {
+      throw new Error(
+        `Invalid config: provider '${providerName}' detect[${index}].metadata must be an array`
+      );
+    }
+    for (let i = 0; i < ruleObj.metadata.length; i++) {
+      const meta = ruleObj.metadata[i] as Record<string, unknown>;
+      if (typeof meta.field !== 'string' || meta.field === '') {
+        throw new Error(
+          `Invalid config: provider '${providerName}' detect[${index}].metadata[${i}].field is required`
+        );
+      }
+      if (typeof meta.row !== 'number' || meta.row < 0) {
+        throw new Error(
+          `Invalid config: provider '${providerName}' detect[${index}].metadata[${i}].row must be a non-negative number`
+        );
+      }
+      if (typeof meta.column !== 'number' || meta.column < 0) {
+        throw new Error(
+          `Invalid config: provider '${providerName}' detect[${index}].metadata[${i}].column must be a non-negative number`
+        );
+      }
+      if (meta.normalize !== undefined && meta.normalize !== 'spaces-to-dashes') {
+        throw new Error(
+          `Invalid config: provider '${providerName}' detect[${index}].metadata[${i}].normalize must be 'spaces-to-dashes'`
+        );
+      }
+    }
   }
 
   return {
-    filenamePattern: ruleObj.filenamePattern as string,
+    filenamePattern: ruleObj.filenamePattern as string | undefined,
     header: ruleObj.header as string,
     currencyField: ruleObj.currencyField as string,
+    skipRows: ruleObj.skipRows as number | undefined,
+    delimiter: ruleObj.delimiter as string | undefined,
+    renamePattern: ruleObj.renamePattern as string | undefined,
+    metadata: ruleObj.metadata as import('./importConfig.ts').MetadataExtraction[] | undefined,
   };
 }
 

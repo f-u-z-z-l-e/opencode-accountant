@@ -6,6 +6,7 @@ import { detectProvider, type DetectionResult } from '../utils/providerDetector.
 
 interface ClassifiedFile {
   filename: string;
+  originalFilename?: string;
   provider: string;
   currency: string;
   targetPath: string;
@@ -131,7 +132,7 @@ export async function classifyStatementsCore(
     } satisfies ClassifyResult);
   }
 
-  const importsDir = path.join(directory, config.paths.imports);
+  const importsDir = path.join(directory, config.paths.import);
   const pendingDir = path.join(directory, config.paths.pending);
   const unrecognizedDir = path.join(directory, config.paths.unrecognized);
 
@@ -154,7 +155,7 @@ export async function classifyStatementsCore(
       success: true,
       classified: [],
       unrecognized: [],
-      message: `No CSV files found in ${config.paths.imports}`,
+      message: `No CSV files found in ${config.paths.import}`,
     });
   }
 
@@ -169,22 +170,24 @@ export async function classifyStatementsCore(
     const detection: DetectionResult | null = detectProvider(filename, content, config);
 
     if (detection) {
-      // Move to provider/currency directory
+      // Move to provider/currency directory, optionally renaming the file
+      const targetFilename = detection.outputFilename || filename;
       const targetDir = path.join(pendingDir, detection.provider, detection.currency);
       ensureDirectory(targetDir);
-      const targetPath = path.join(targetDir, filename);
+      const targetPath = path.join(targetDir, targetFilename);
 
       fs.renameSync(sourcePath, targetPath);
 
       classified.push({
-        filename,
+        filename: targetFilename,
+        originalFilename: detection.outputFilename ? filename : undefined,
         provider: detection.provider,
         currency: detection.currency,
         targetPath: path.join(
           config.paths.pending,
           detection.provider,
           detection.currency,
-          filename
+          targetFilename
         ),
       });
     } else {

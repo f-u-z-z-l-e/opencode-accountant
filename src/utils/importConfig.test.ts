@@ -23,10 +23,10 @@ describe('importConfig', () => {
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 
 providers:
   revolut:
@@ -43,10 +43,10 @@ providers:
       const config = loadImportConfig(testDir);
 
       expect(config.paths).toEqual({
-        imports: 'statements/imports',
+        import: 'statements/import',
         pending: 'doc/agent/todo/import',
         done: 'doc/agent/done/import',
-        unrecognized: 'statements/imports/unrecognized',
+        unrecognized: 'statements/import/unrecognized',
       });
 
       expect(config.providers.revolut).toBeDefined();
@@ -68,10 +68,10 @@ providers:
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 
 providers:
   revolut:
@@ -138,7 +138,7 @@ providers:
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
 
@@ -163,10 +163,10 @@ providers:
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 `
       );
 
@@ -180,10 +180,10 @@ providers:
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 
 providers: {}
 `
@@ -199,10 +199,10 @@ providers: {}
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 
 providers:
   revolut:
@@ -222,10 +222,10 @@ providers:
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 
 providers:
   revolut:
@@ -247,10 +247,10 @@ providers:
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 
 providers:
   revolut:
@@ -273,10 +273,10 @@ providers:
       fs.writeFileSync(
         configPath,
         `paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 
 providers:
   revolut:
@@ -290,6 +290,219 @@ providers:
 
       expect(() => loadImportConfig(testDir)).toThrow(
         "Invalid config for provider 'revolut': 'currencies' must contain at least one mapping"
+      );
+    });
+
+    it('should accept detection rule without filenamePattern (header-only matching)', () => {
+      const configPath = path.join(configDir, 'providers.yaml');
+      fs.writeFileSync(
+        configPath,
+        `paths:
+  import: statements/import
+  pending: doc/agent/todo/import
+  done: doc/agent/done/import
+  unrecognized: statements/import/unrecognized
+
+providers:
+  ubs:
+    detect:
+      - header: "Date,Amount,Balance"
+        currencyField: Currency
+    currencies:
+      CHF: chf
+`
+      );
+
+      const config = loadImportConfig(testDir);
+
+      expect(config.providers.ubs.detect[0].filenamePattern).toBeUndefined();
+      expect(config.providers.ubs.detect[0].header).toBe('Date,Amount,Balance');
+    });
+
+    it('should accept detection rule with skipRows, delimiter, and renamePattern', () => {
+      const configPath = path.join(configDir, 'providers.yaml');
+      fs.writeFileSync(
+        configPath,
+        `paths:
+  import: statements/import
+  pending: doc/agent/todo/import
+  done: doc/agent/done/import
+  unrecognized: statements/import/unrecognized
+
+providers:
+  ubs:
+    detect:
+      - header: "Date,Amount,Balance"
+        currencyField: Currency
+        skipRows: 9
+        delimiter: ";"
+        renamePattern: "transactions-ubs-{kontonummer}.csv"
+    currencies:
+      CHF: chf
+`
+      );
+
+      const config = loadImportConfig(testDir);
+
+      expect(config.providers.ubs.detect[0].skipRows).toBe(9);
+      expect(config.providers.ubs.detect[0].delimiter).toBe(';');
+      expect(config.providers.ubs.detect[0].renamePattern).toBe(
+        'transactions-ubs-{kontonummer}.csv'
+      );
+    });
+
+    it('should accept detection rule with metadata extraction config', () => {
+      const configPath = path.join(configDir, 'providers.yaml');
+      fs.writeFileSync(
+        configPath,
+        `paths:
+  import: statements/import
+  pending: doc/agent/todo/import
+  done: doc/agent/done/import
+  unrecognized: statements/import/unrecognized
+
+providers:
+  ubs:
+    detect:
+      - header: "Date,Amount,Balance"
+        currencyField: Currency
+        skipRows: 9
+        metadata:
+          - field: kontonummer
+            row: 0
+            column: 1
+            normalize: spaces-to-dashes
+          - field: iban
+            row: 1
+            column: 1
+    currencies:
+      CHF: chf
+`
+      );
+
+      const config = loadImportConfig(testDir);
+
+      expect(config.providers.ubs.detect[0].metadata).toHaveLength(2);
+      expect(config.providers.ubs.detect[0].metadata![0]).toEqual({
+        field: 'kontonummer',
+        row: 0,
+        column: 1,
+        normalize: 'spaces-to-dashes',
+      });
+      expect(config.providers.ubs.detect[0].metadata![1]).toEqual({
+        field: 'iban',
+        row: 1,
+        column: 1,
+      });
+    });
+
+    it('should throw error when skipRows is negative', () => {
+      const configPath = path.join(configDir, 'providers.yaml');
+      fs.writeFileSync(
+        configPath,
+        `paths:
+  import: statements/import
+  pending: doc/agent/todo/import
+  done: doc/agent/done/import
+  unrecognized: statements/import/unrecognized
+
+providers:
+  ubs:
+    detect:
+      - header: "Date,Amount,Balance"
+        currencyField: Currency
+        skipRows: -1
+    currencies:
+      CHF: chf
+`
+      );
+
+      expect(() => loadImportConfig(testDir)).toThrow(
+        "Invalid config: provider 'ubs' detect[0].skipRows must be a non-negative number"
+      );
+    });
+
+    it('should throw error when delimiter is not a single character', () => {
+      const configPath = path.join(configDir, 'providers.yaml');
+      fs.writeFileSync(
+        configPath,
+        `paths:
+  import: statements/import
+  pending: doc/agent/todo/import
+  done: doc/agent/done/import
+  unrecognized: statements/import/unrecognized
+
+providers:
+  ubs:
+    detect:
+      - header: "Date,Amount,Balance"
+        currencyField: Currency
+        delimiter: "::"
+    currencies:
+      CHF: chf
+`
+      );
+
+      expect(() => loadImportConfig(testDir)).toThrow(
+        "Invalid config: provider 'ubs' detect[0].delimiter must be a single character"
+      );
+    });
+
+    it('should throw error when metadata field is missing required properties', () => {
+      const configPath = path.join(configDir, 'providers.yaml');
+      fs.writeFileSync(
+        configPath,
+        `paths:
+  import: statements/import
+  pending: doc/agent/todo/import
+  done: doc/agent/done/import
+  unrecognized: statements/import/unrecognized
+
+providers:
+  ubs:
+    detect:
+      - header: "Date,Amount,Balance"
+        currencyField: Currency
+        metadata:
+          - field: kontonummer
+            row: 0
+    currencies:
+      CHF: chf
+`
+      );
+
+      expect(() => loadImportConfig(testDir)).toThrow(
+        "Invalid config: provider 'ubs' detect[0].metadata[0].column must be a non-negative number"
+      );
+    });
+
+    it('should throw error when metadata normalize has invalid value', () => {
+      const configPath = path.join(configDir, 'providers.yaml');
+      fs.writeFileSync(
+        configPath,
+        `paths:
+  import: statements/import
+  pending: doc/agent/todo/import
+  done: doc/agent/done/import
+  unrecognized: statements/import/unrecognized
+
+providers:
+  ubs:
+    detect:
+      - header: "Date,Amount,Balance"
+        currencyField: Currency
+        metadata:
+          - field: kontonummer
+            row: 0
+            column: 1
+            normalize: invalid-type
+    currencies:
+      CHF: chf
+`
+      );
+
+      expect(() => loadImportConfig(testDir)).toThrow(
+        "Invalid config: provider 'ubs' detect[0].metadata[0].normalize must be 'spaces-to-dashes'"
       );
     });
   });

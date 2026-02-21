@@ -93,10 +93,10 @@ The `classify-statements` tool classifies bank statement CSV files by provider a
 
 ```yaml
 paths:
-  imports: statements/imports
+  import: statements/import
   pending: doc/agent/todo/import
   done: doc/agent/done/import
-  unrecognized: statements/imports/unrecognized
+  unrecognized: statements/import/unrecognized
 
 providers:
   revolut:
@@ -112,6 +112,23 @@ providers:
       EUR: eur
       USD: usd
       BTC: btc
+
+  ubs:
+    detect:
+      - header: 'Trade date,Trade time,Booking date,Value date,Currency,Debit,Credit,Individual amount,Balance,Transaction no.,Description1,Description2,Description3,Footnotes'
+        currencyField: Currency
+        skipRows: 9
+        delimiter: ';'
+        renamePattern: 'transactions-ubs-{accountnumber}.csv'
+        metadata:
+          - field: accountnumber
+            row: 0
+            column: 1
+            normalize: spaces-to-dashes
+    currencies:
+      CHF: chf
+      EUR: eur
+      USD: usd
 ```
 
 #### Configuration Options
@@ -120,19 +137,32 @@ providers:
 
 | Field          | Description                                     |
 | -------------- | ----------------------------------------------- |
-| `imports`      | Drop zone for new CSV files                     |
+| `import`       | Drop zone for new CSV files                     |
 | `pending`      | Base path for classified files awaiting import  |
 | `done`         | Base path for archived files after import       |
 | `unrecognized` | Directory for files that couldn't be classified |
 
 **Provider Detection Rules:**
 
-| Field             | Description                                           |
-| ----------------- | ----------------------------------------------------- |
-| `filenamePattern` | Regex pattern to match against filename               |
-| `header`          | Expected CSV header row (exact match)                 |
-| `currencyField`   | Column name containing the currency/symbol            |
-| `currencies`      | Map of raw currency values to normalized folder names |
+| Field             | Required | Description                                                |
+| ----------------- | -------- | ---------------------------------------------------------- |
+| `filenamePattern` | No       | Regex pattern to match against filename                    |
+| `header`          | Yes      | Expected CSV header row (exact match)                      |
+| `currencyField`   | Yes      | Column name containing the currency/symbol                 |
+| `skipRows`        | No       | Number of rows to skip before header (default: 0)          |
+| `delimiter`       | No       | CSV delimiter character (default: `,`)                     |
+| `renamePattern`   | No       | Output filename pattern with `{placeholder}` substitutions |
+| `metadata`        | No       | Array of metadata extraction rules (see below)             |
+| `currencies`      | Yes      | Map of raw currency values to normalized folder names      |
+
+**Metadata Extraction Rules:**
+
+| Field       | Required | Description                                             |
+| ----------- | -------- | ------------------------------------------------------- |
+| `field`     | Yes      | Placeholder name to use in `renamePattern`              |
+| `row`       | Yes      | Row index within `skipRows` to extract from (0-indexed) |
+| `column`    | Yes      | Column index to extract from (0-indexed)                |
+| `normalize` | No       | Normalization type: `spaces-to-dashes`                  |
 
 #### Directory Structure
 
