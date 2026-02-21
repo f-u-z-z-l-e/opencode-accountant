@@ -75,6 +75,11 @@ describe('update-prices tool', () => {
   });
 
   it('should write price files to ledger/currencies/ directory for all configured tickers', async () => {
+    // Get yesterday's date dynamically to match what the tool expects
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = yesterday.toISOString().split('T')[0];
+
     // Mock pricehist responses with real data format
     const mockPriceFetcher = async (cmdArgs: string[]): Promise<string> => {
       // The pair is the last arg, but for USD with --fmt-base, it's before the last two args
@@ -85,11 +90,11 @@ describe('update-prices tool', () => {
       const pair = cmdArgs[pairIndex];
 
       if (pair === 'BTC/CHF') {
-        return 'P 2026-02-18 00:00:00 BTC 88494.8925094421 CHF';
+        return `P ${dateStr} 00:00:00 BTC 88494.8925094421 CHF`;
       } else if (pair === 'EUR/CHF') {
-        return 'P 2026-02-18 00:00:00 EUR 0.9124 CHF';
+        return `P ${dateStr} 00:00:00 EUR 0.9124 CHF`;
       } else if (pair === 'USDCHF=X') {
-        return 'P 2026-02-18 00:00:00 USD 0.7702000141143799 CHF';
+        return `P ${dateStr} 00:00:00 USD 0.7702000141143799 CHF`;
       }
       return '';
     };
@@ -104,30 +109,44 @@ describe('update-prices tool', () => {
     const btcPath = path.join(ledgerDir, 'btc-chf.journal');
     expect(fs.existsSync(btcPath)).toBe(true);
     const btcContent = fs.readFileSync(btcPath, 'utf-8');
-    expect(btcContent).toContain('P 2026-02-18 00:00:00 BTC');
+    expect(btcContent).toContain(`P ${dateStr} 00:00:00 BTC`);
     expect(btcContent).toContain('CHF');
 
     // Verify EUR file
     const eurPath = path.join(ledgerDir, 'eur-chf.journal');
     expect(fs.existsSync(eurPath)).toBe(true);
     const eurContent = fs.readFileSync(eurPath, 'utf-8');
-    expect(eurContent).toContain('P 2026-02-18 00:00:00 EUR');
+    expect(eurContent).toContain(`P ${dateStr} 00:00:00 EUR`);
     expect(eurContent).toContain('0.9124 CHF');
 
     // Verify USD file
     const usdPath = path.join(ledgerDir, 'usd-chf.journal');
     expect(fs.existsSync(usdPath)).toBe(true);
     const usdContent = fs.readFileSync(usdPath, 'utf-8');
-    expect(usdContent).toContain('P 2026-02-18 00:00:00 USD');
+    expect(usdContent).toContain(`P ${dateStr} 00:00:00 USD`);
     expect(usdContent).toContain('CHF');
   });
 
   it('should deduplicate prices by date and sort chronologically', async () => {
-    // Pre-populate BTC file with existing prices
+    // Get yesterday's date dynamically
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = yesterday.toISOString().split('T')[0];
+
+    // Create dates around yesterday for testing sort order
+    const dayBefore = new Date(yesterday);
+    dayBefore.setDate(dayBefore.getDate() - 1);
+    const dayBeforeStr = dayBefore.toISOString().split('T')[0];
+
+    const dayAfter = new Date(yesterday);
+    dayAfter.setDate(dayAfter.getDate() + 1);
+    const dayAfterStr = dayAfter.toISOString().split('T')[0];
+
+    // Pre-populate BTC file with existing prices (day before and day after yesterday)
     const btcPath = path.join(ledgerDir, 'btc-chf.journal');
     fs.writeFileSync(
       btcPath,
-      'P 2026-02-17 00:00:00 BTC 87000.00 CHF\nP 2026-02-19 00:00:00 BTC 90000.00 CHF\n'
+      `P ${dayBeforeStr} 00:00:00 BTC 87000.00 CHF\nP ${dayAfterStr} 00:00:00 BTC 90000.00 CHF\n`
     );
 
     const mockPriceFetcher = async (cmdArgs: string[]): Promise<string> => {
@@ -136,12 +155,12 @@ describe('update-prices tool', () => {
       const pair = cmdArgs[pairIndex];
 
       if (pair === 'BTC/CHF') {
-        // Return price for 2026-02-18 (middle date) - should be inserted in order
-        return 'P 2026-02-18 00:00:00 BTC 88494.8925094421 CHF';
+        // Return price for yesterday (middle date) - should be inserted in order
+        return `P ${dateStr} 00:00:00 BTC 88494.8925094421 CHF`;
       } else if (pair === 'EUR/CHF') {
-        return 'P 2026-02-18 00:00:00 EUR 0.9124 CHF';
+        return `P ${dateStr} 00:00:00 EUR 0.9124 CHF`;
       } else if (pair === 'USDCHF=X') {
-        return 'P 2026-02-18 00:00:00 USD 0.7702000141143799 CHF';
+        return `P ${dateStr} 00:00:00 USD 0.7702000141143799 CHF`;
       }
       return '';
     };
@@ -153,9 +172,9 @@ describe('update-prices tool', () => {
     const lines = btcContent.trim().split('\n');
 
     expect(lines).toHaveLength(3);
-    expect(lines[0]).toContain('2026-02-17'); // Oldest first
-    expect(lines[1]).toContain('2026-02-18'); // Middle
-    expect(lines[2]).toContain('2026-02-19'); // Newest last
+    expect(lines[0]).toContain(dayBeforeStr); // Oldest first
+    expect(lines[1]).toContain(dateStr); // Middle (yesterday)
+    expect(lines[2]).toContain(dayAfterStr); // Newest last
   });
 
   it('should use per-currency backfill_date when backfill mode is enabled', async () => {
