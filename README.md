@@ -142,7 +142,7 @@ your-project/
 │   └── import/
 │       └── providers.yaml
 ├── statements/
-│   └── imports/                  # Drop CSV files here
+│   └── import/                  # Drop CSV files here
 │       └── unrecognized/         # Unclassified files moved here
 └── doc/
     └── agent/
@@ -158,10 +158,10 @@ your-project/
 
 #### Workflow
 
-1. Drop CSV files into `statements/imports/`
+1. Drop CSV files into `statements/import/`
 2. Run `classify-statements` tool
 3. Files are moved to `doc/agent/todo/import/<provider>/<currency>/`
-4. Unrecognized files are moved to `statements/imports/unrecognized/`
+4. Unrecognized files are moved to `statements/import/unrecognized/`
 5. After successful import, files should be moved to `doc/agent/done/import/`
 
 ## Development
