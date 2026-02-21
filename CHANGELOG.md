@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.7](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.6...v0.0.7) (2026-02-21)
+
+
+### Bug Fixes
+
+* add classify-statements tool ([77d9526](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/77d9526efd80533a46d8ac7bcd8fb69ae5405665))
+* define import workflow ([bb36403](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/bb3640398c8f744e8c0b3bb147a6458f11995f55))
+* failing tests ([1bb01a3](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/1bb01a3480501ed369f4ed228f348ad3b443d0b2))
+* update readme file ([5e00cb4](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/5e00cb43f03c06ec807b6d61f98e851d8a786e52))
+
 ## [0.0.6](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.5...v0.0.6) (2026-02-19)
 
 
