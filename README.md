@@ -87,6 +87,83 @@ The `source` field accepts any source supported by [pricehist](https://github.co
 - `ecb` - European Central Bank exchange rates
 - `yahoo` - Yahoo Finance (use `fmt_base` for proper formatting)
 
+### Statement Classification Configuration
+
+The `classify-statements` tool classifies bank statement CSV files by provider and currency, moving them to the appropriate directories for import processing. Create a `config/import/providers.yaml` file:
+
+```yaml
+paths:
+  imports: statements/imports
+  pending: doc/agent/todo/import
+  done: doc/agent/done/import
+  unrecognized: statements/imports/unrecognized
+
+providers:
+  revolut:
+    detect:
+      - filenamePattern: '^account-statement_'
+        header: 'Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance'
+        currencyField: Currency
+      - filenamePattern: '^crypto-account-statement_'
+        header: 'Symbol,Type,Quantity,Price,Value,Fees,Date'
+        currencyField: Symbol
+    currencies:
+      CHF: chf
+      EUR: eur
+      USD: usd
+      BTC: btc
+```
+
+#### Configuration Options
+
+**Paths:**
+
+| Field          | Description                                     |
+| -------------- | ----------------------------------------------- |
+| `imports`      | Drop zone for new CSV files                     |
+| `pending`      | Base path for classified files awaiting import  |
+| `done`         | Base path for archived files after import       |
+| `unrecognized` | Directory for files that couldn't be classified |
+
+**Provider Detection Rules:**
+
+| Field             | Description                                           |
+| ----------------- | ----------------------------------------------------- |
+| `filenamePattern` | Regex pattern to match against filename               |
+| `header`          | Expected CSV header row (exact match)                 |
+| `currencyField`   | Column name containing the currency/symbol            |
+| `currencies`      | Map of raw currency values to normalized folder names |
+
+#### Directory Structure
+
+```
+your-project/
+├── config/
+│   └── import/
+│       └── providers.yaml
+├── statements/
+│   └── imports/                  # Drop CSV files here
+│       └── unrecognized/         # Unclassified files moved here
+└── doc/
+    └── agent/
+        ├── todo/
+        │   └── import/
+        │       └── <provider>/   # e.g. revolut
+        │           └── <currency>/   # e.g. chf, eur, usd, btc
+        └── done/
+            └── import/
+                └── <provider>/
+                    └── <currency>/
+```
+
+#### Workflow
+
+1. Drop CSV files into `statements/imports/`
+2. Run `classify-statements` tool
+3. Files are moved to `doc/agent/todo/import/<provider>/<currency>/`
+4. Unrecognized files are moved to `statements/imports/unrecognized/`
+5. After successful import, files should be moved to `doc/agent/done/import/`
+
 ## Development
 
 - `mise run build` - Build the module
