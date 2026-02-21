@@ -115,7 +115,9 @@ providers:
 
   ubs:
     detect:
-      - header: 'Trade date,Trade time,Booking date,Value date,Currency,Debit,Credit,Individual amount,Balance,Transaction no.,Description1,Description2,Description3,Footnotes'
+      # Note: UBS exports have a trailing semicolon in the header row, which creates
+      # an empty field when parsed. The header must include a trailing comma to match.
+      - header: 'Trade date,Trade time,Booking date,Value date,Currency,Debit,Credit,Individual amount,Balance,Transaction no.,Description1,Description2,Description3,Footnotes,'
         currencyField: Currency
         skipRows: 9
         delimiter: ';'
@@ -147,13 +149,15 @@ providers:
 | Field             | Required | Description                                                |
 | ----------------- | -------- | ---------------------------------------------------------- |
 | `filenamePattern` | No       | Regex pattern to match against filename                    |
-| `header`          | Yes      | Expected CSV header row (exact match)                      |
+| `header`          | Yes      | Expected CSV header row (comma-separated, exact match)\*   |
 | `currencyField`   | Yes      | Column name containing the currency/symbol                 |
 | `skipRows`        | No       | Number of rows to skip before header (default: 0)          |
 | `delimiter`       | No       | CSV delimiter character (default: `,`)                     |
 | `renamePattern`   | No       | Output filename pattern with `{placeholder}` substitutions |
 | `metadata`        | No       | Array of metadata extraction rules (see below)             |
 | `currencies`      | Yes      | Map of raw currency values to normalized folder names      |
+
+\* **Note on trailing delimiters:** If the CSV header row ends with a trailing delimiter (e.g., `Field1;Field2;`), this creates an empty field when parsed. The `header` config must include a trailing comma to account for this (e.g., `Field1,Field2,`).
 
 **Metadata Extraction Rules:**
 

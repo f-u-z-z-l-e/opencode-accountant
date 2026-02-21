@@ -287,6 +287,81 @@ Deposit,Current,2023-06-12 10:00:00,2023-06-12 10:00:00,Initial deposit,1000.00,
       expect(result!.outputFilename).toBeUndefined();
       expect(result!.metadata).toBeUndefined();
     });
+
+    it('should fail to match when CSV header has trailing delimiter (creates empty field)', () => {
+      const configWithoutTrailingField: ImportConfig = {
+        paths: {
+          import: 'statements/import',
+          pending: 'doc/agent/todo/import',
+          done: 'doc/agent/done/import',
+          unrecognized: 'statements/import/unrecognized',
+        },
+        providers: {
+          testbank: {
+            detect: [
+              {
+                // Header configured WITHOUT the trailing empty field
+                header: 'Date,Description,Amount,Currency',
+                currencyField: 'Currency',
+                delimiter: ';',
+              },
+            ],
+            currencies: {
+              CHF: 'chf',
+            },
+          },
+        },
+      };
+
+      const filename = 'test.csv';
+      // CSV with trailing semicolon - this creates an empty field when parsed
+      const content = `Date;Description;Amount;Currency;
+2024-01-15;Test;100.00;CHF;`;
+
+      const result = detectProvider(filename, content, configWithoutTrailingField);
+
+      // Detection FAILS because the actual header becomes "Date,Description,Amount,Currency,"
+      // (with trailing comma from empty field) but config expects "Date,Description,Amount,Currency"
+      expect(result).toBeNull();
+    });
+
+    it('should match when config header includes trailing comma to account for trailing delimiter', () => {
+      const configWithTrailingField: ImportConfig = {
+        paths: {
+          import: 'statements/import',
+          pending: 'doc/agent/todo/import',
+          done: 'doc/agent/done/import',
+          unrecognized: 'statements/import/unrecognized',
+        },
+        providers: {
+          testbank: {
+            detect: [
+              {
+                // Header configured WITH the trailing empty field (trailing comma)
+                header: 'Date,Description,Amount,Currency,',
+                currencyField: 'Currency',
+                delimiter: ';',
+              },
+            ],
+            currencies: {
+              CHF: 'chf',
+            },
+          },
+        },
+      };
+
+      const filename = 'test.csv';
+      // CSV with trailing semicolon - this creates an empty field when parsed
+      const content = `Date;Description;Amount;Currency;
+2024-01-15;Test;100.00;CHF;`;
+
+      const result = detectProvider(filename, content, configWithTrailingField);
+
+      // Detection SUCCEEDS because the config header has trailing comma to match the empty field
+      expect(result).not.toBeNull();
+      expect(result!.provider).toBe('testbank');
+      expect(result!.currency).toBe('chf');
+    });
   });
 
   describe('classifyFiles', () => {
