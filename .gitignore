@@ -12,3 +12,5 @@ coverage/
 .memory/
 .idea/
 .mise.local.toml
+#temp/
+
