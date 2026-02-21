@@ -17,18 +17,16 @@ interface UnrecognizedFile {
   targetPath: string;
 }
 
-interface PendingFile {
-  provider: string;
-  currency: string;
+interface FileCollision {
   filename: string;
-  path: string;
+  existingPath: string;
 }
 
 interface ClassifyResult {
   success: boolean;
   classified: ClassifiedFile[];
   unrecognized: UnrecognizedFile[];
-  pendingFiles?: PendingFile[];
+  collisions?: FileCollision[];
   error?: string;
 }
 
@@ -47,46 +45,6 @@ function findCSVFiles(importsDir: string): string[] {
       const fullPath = path.join(importsDir, file);
       return fs.statSync(fullPath).isFile();
     });
-}
-
-/**
- * Checks for any existing files in the pending directories
- * Returns list of pending files if any exist
- */
-function checkPendingFiles(directory: string, pendingBasePath: string): PendingFile[] {
-  const pendingDir = path.join(directory, pendingBasePath);
-  const pendingFiles: PendingFile[] = [];
-
-  if (!fs.existsSync(pendingDir)) {
-    return [];
-  }
-
-  // Walk through provider directories
-  const providers = fs.readdirSync(pendingDir);
-  for (const provider of providers) {
-    const providerPath = path.join(pendingDir, provider);
-    if (!fs.statSync(providerPath).isDirectory()) continue;
-
-    // Walk through currency directories
-    const currencies = fs.readdirSync(providerPath);
-    for (const currency of currencies) {
-      const currencyPath = path.join(providerPath, currency);
-      if (!fs.statSync(currencyPath).isDirectory()) continue;
-
-      // Find CSV files
-      const files = fs.readdirSync(currencyPath).filter((f) => f.toLowerCase().endsWith('.csv'));
-      for (const file of files) {
-        pendingFiles.push({
-          provider,
-          currency,
-          filename: file,
-          path: path.join(currencyPath, file),
-        });
-      }
-    }
-  }
-
-  return pendingFiles;
 }
 
 /**
@@ -136,18 +94,6 @@ export async function classifyStatementsCore(
   const pendingDir = path.join(directory, config.paths.pending);
   const unrecognizedDir = path.join(directory, config.paths.unrecognized);
 
-  // Check for pending files - abort if any exist
-  const pendingFiles = checkPendingFiles(directory, config.paths.pending);
-  if (pendingFiles.length > 0) {
-    return JSON.stringify({
-      success: false,
-      error: `Found ${pendingFiles.length} pending file(s) that must be processed before classifying new statements.`,
-      pendingFiles,
-      classified: [],
-      unrecognized: [],
-    } satisfies ClassifyResult);
-  }
-
   // Find CSV files to process
   const csvFiles = findCSVFiles(importsDir);
   if (csvFiles.length === 0) {
@@ -159,47 +105,94 @@ export async function classifyStatementsCore(
     });
   }
 
-  const classified: ClassifiedFile[] = [];
-  const unrecognized: UnrecognizedFile[] = [];
+  // First pass: detect all files and check for collisions
+  interface PlannedMove {
+    filename: string;
+    sourcePath: string;
+    targetPath: string;
+    targetFilename: string;
+    detection: DetectionResult | null;
+  }
 
-  // Process each file
+  const plannedMoves: PlannedMove[] = [];
+  const collisions: FileCollision[] = [];
+
   for (const filename of csvFiles) {
     const sourcePath = path.join(importsDir, filename);
     const content = fs.readFileSync(sourcePath, 'utf-8');
-
     const detection: DetectionResult | null = detectProvider(filename, content, config);
 
-    if (detection) {
-      // Move to provider/currency directory, optionally renaming the file
-      const targetFilename = detection.outputFilename || filename;
-      const targetDir = path.join(pendingDir, detection.provider, detection.currency);
-      ensureDirectory(targetDir);
-      const targetPath = path.join(targetDir, targetFilename);
+    let targetPath: string;
+    let targetFilename: string;
 
-      fs.renameSync(sourcePath, targetPath);
+    if (detection) {
+      targetFilename = detection.outputFilename || filename;
+      const targetDir = path.join(pendingDir, detection.provider, detection.currency);
+      targetPath = path.join(targetDir, targetFilename);
+    } else {
+      targetFilename = filename;
+      targetPath = path.join(unrecognizedDir, filename);
+    }
+
+    // Check for collision
+    if (fs.existsSync(targetPath)) {
+      collisions.push({
+        filename,
+        existingPath: targetPath,
+      });
+    }
+
+    plannedMoves.push({
+      filename,
+      sourcePath,
+      targetPath,
+      targetFilename,
+      detection,
+    });
+  }
+
+  // Abort if any collisions detected
+  if (collisions.length > 0) {
+    return JSON.stringify({
+      success: false,
+      error: `Cannot classify: ${collisions.length} file(s) would overwrite existing pending files.`,
+      collisions,
+      classified: [],
+      unrecognized: [],
+    } satisfies ClassifyResult);
+  }
+
+  // Second pass: execute all moves (no collisions)
+  const classified: ClassifiedFile[] = [];
+  const unrecognized: UnrecognizedFile[] = [];
+
+  for (const move of plannedMoves) {
+    if (move.detection) {
+      // Move to provider/currency directory
+      const targetDir = path.dirname(move.targetPath);
+      ensureDirectory(targetDir);
+      fs.renameSync(move.sourcePath, move.targetPath);
 
       classified.push({
-        filename: targetFilename,
-        originalFilename: detection.outputFilename ? filename : undefined,
-        provider: detection.provider,
-        currency: detection.currency,
+        filename: move.targetFilename,
+        originalFilename: move.detection.outputFilename ? move.filename : undefined,
+        provider: move.detection.provider,
+        currency: move.detection.currency,
         targetPath: path.join(
           config.paths.pending,
-          detection.provider,
-          detection.currency,
-          targetFilename
+          move.detection.provider,
+          move.detection.currency,
+          move.targetFilename
         ),
       });
     } else {
       // Move to unrecognized directory
       ensureDirectory(unrecognizedDir);
-      const targetPath = path.join(unrecognizedDir, filename);
-
-      fs.renameSync(sourcePath, targetPath);
+      fs.renameSync(move.sourcePath, move.targetPath);
 
       unrecognized.push({
-        filename,
-        targetPath: path.join(config.paths.unrecognized, filename),
+        filename: move.filename,
+        targetPath: path.join(config.paths.unrecognized, move.filename),
       });
     }
   }
