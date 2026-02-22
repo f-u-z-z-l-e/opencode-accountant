@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.11](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.10...v0.0.11) (2026-02-22)
+
+
+### Bug Fixes
+
+* hledger import revised ([b1913f8](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/b1913f82fb0eaf71c09e397bc561af59f864e104))
+
 ## [0.0.10](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.9...v0.0.10) (2026-02-22)
 
 
