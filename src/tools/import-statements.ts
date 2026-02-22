@@ -10,6 +10,8 @@ import {
   type HledgerExecutor,
   type UnknownPosting,
 } from '../utils/hledgerExecutor.ts';
+import { parseRulesFile } from '../utils/rulesParser.ts';
+import { parseCsvFile, findMatchingCsvRow } from '../utils/csvParser.ts';
 
 /**
  * Result for a single CSV file processing
@@ -187,6 +189,34 @@ export async function importStatementsCore(
     const unknownPostings = parseUnknownPostings(result.stdout);
     const transactionCount = countTransactions(result.stdout);
     const matchedCount = transactionCount - unknownPostings.length;
+
+    // If there are unknown postings, attach the full CSV row data for context
+    if (unknownPostings.length > 0) {
+      try {
+        const rulesContent = fs.readFileSync(rulesFile, 'utf-8');
+        const rulesConfig = parseRulesFile(rulesContent);
+        const csvRows = parseCsvFile(csvFile, rulesConfig);
+
+        for (const posting of unknownPostings) {
+          const csvRow = findMatchingCsvRow(
+            {
+              date: posting.date,
+              description: posting.description,
+              amount: posting.amount,
+            },
+            csvRows,
+            rulesConfig
+          );
+          posting.csvRow = csvRow;
+        }
+      } catch {
+        // If CSV parsing fails, continue without the row data
+        // The posting info from hledger is still useful
+        for (const posting of unknownPostings) {
+          posting.csvRow = undefined;
+        }
+      }
+    }
 
     totalTransactions += transactionCount;
     totalMatched += matchedCount;

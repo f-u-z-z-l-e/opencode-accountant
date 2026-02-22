@@ -6,6 +6,7 @@
       "name": "opencode-accountant",
       "dependencies": {
         "@opencode-ai/plugin": "latest",
+        "convert-csv-to-json": "^3.20.0",
         "js-yaml": "^4.1.0",
         "papaparse": "^5.5.3",
       },
@@ -252,6 +253,8 @@
     "color-name": ["color-name@1.1.4", "", {}, "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="],
 
     "concat-map": ["concat-map@0.0.1", "", {}, "sha512-/Srv4dswyQNBfohGpz9o6Yb3Gz3SrUDqBH5rTuhGR7ahtlbYKnVxw2bCFMRljaA7EXHaXZ8wsHdodFvbkhKmqg=="],
+
+    "convert-csv-to-json": ["convert-csv-to-json@3.20.0", "", {}, "sha512-jM/uK29cYnvJq2NyOU4ah6A7ytqdy4X+Mu005sD2qdsXAiTPJgg2nQMCN5tOdYr3z85IT5zbcMNRq29bamfZaA=="],
 
     "cross-spawn": ["cross-spawn@7.0.6", "", { "dependencies": { "path-key": "^3.1.0", "shebang-command": "^2.0.0", "which": "^2.0.1" } }, "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="],
 

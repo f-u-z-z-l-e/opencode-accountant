@@ -42,7 +42,7 @@ When all transactions have matching rules:
 
 ### Check Mode - Unknown Postings Found
 
-When transactions don't match any `if` pattern in the rules file:
+When transactions don't match any `if` pattern in the rules file, the tool returns the full CSV row data for each unknown posting to provide context for classification:
 
 ```json
 {
@@ -55,15 +55,47 @@ When transactions don't match any `if` pattern in the rules file:
       "unknownPostings": [
         {
           "date": "2026-01-16",
-          "description": "Kaeser, Joel",
+          "description": "Connor, John",
           "amount": "CHF95.25",
-          "account": "income:unknown"
+          "account": "income:unknown",
+          "csvRow": {
+            "trade_date": "2026-01-16",
+            "trade_time": "",
+            "booking_date": "2026-01-16",
+            "value_date": "2026-01-16",
+            "currency": "CHF",
+            "debit": "",
+            "credit": "95.25",
+            "individual_amount": "",
+            "balance": "4746.23",
+            "transaction_no": "ABC123",
+            "description1": "Connor, John",
+            "description2": "Twint deposit",
+            "description3": "Ref: TW-12345",
+            "footnotes": ""
+          }
         },
         {
           "date": "2026-01-30",
           "description": "Balance closing of service prices",
           "amount": "CHF-10.00",
-          "account": "expenses:unknown"
+          "account": "expenses:unknown",
+          "csvRow": {
+            "trade_date": "2026-01-30",
+            "trade_time": "",
+            "booking_date": "2026-01-30",
+            "value_date": "2026-01-30",
+            "currency": "CHF",
+            "debit": "10.00",
+            "credit": "",
+            "individual_amount": "",
+            "balance": "2364.69",
+            "transaction_no": "DEF456",
+            "description1": "Balance closing of service prices",
+            "description2": "",
+            "description3": "",
+            "footnotes": ""
+          }
         }
       ]
     }
@@ -144,11 +176,14 @@ hledger assigns transactions to `income:unknown` or `expenses:unknown` based on 
 
 ## Fixing Unknown Postings
 
-When the tool reports unknown postings, add `if` rules to the appropriate rules file:
+When the tool reports unknown postings, the `csvRow` field contains all available data from the original CSV to help determine the correct account. This includes additional description fields, transaction references, and other metadata that may help with classification.
+
+Add `if` rules to the appropriate rules file based on the posting details:
 
 ```
 # Example: Categorize a friend's reimbursement
-if Kaeser, Joel
+# (csvRow showed description2: "Twint deposit" confirming it's a payment app transfer)
+if Connor, John
     account1 income:reimbursements
 
 # Example: Categorize bank service charges
@@ -157,6 +192,23 @@ if Balance closing of service prices
 ```
 
 Then run the tool again with `checkOnly: true` to verify the rules work.
+
+### CSV Row Field Names
+
+The `csvRow` object uses field names from the `fields` directive in the rules file. Common fields include:
+
+| Field            | Description                                             |
+| ---------------- | ------------------------------------------------------- |
+| `trade_date`     | When the transaction occurred                           |
+| `booking_date`   | When it was booked                                      |
+| `description1`   | Primary description                                     |
+| `description2`   | Secondary description (often useful for classification) |
+| `description3`   | Additional reference information                        |
+| `transaction_no` | Unique transaction identifier                           |
+| `debit`          | Debit amount (money out)                                |
+| `credit`         | Credit amount (money in)                                |
+
+The exact field names depend on your rules file configuration.
 
 ## Error Handling
 

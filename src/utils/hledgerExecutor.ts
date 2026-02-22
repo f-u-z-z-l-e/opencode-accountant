@@ -1,4 +1,5 @@
 import { $ } from 'bun';
+import type { CsvRowData } from './csvParser.ts';
 
 /**
  * Result of executing an hledger command
@@ -44,6 +45,7 @@ export interface UnknownPosting {
   amount: string;
   account: 'income:unknown' | 'expenses:unknown';
   balance?: string;
+  csvRow?: CsvRowData;
 }
 
 /**

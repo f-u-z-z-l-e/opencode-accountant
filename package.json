@@ -28,6 +28,7 @@
   ],
   "dependencies": {
     "@opencode-ai/plugin": "latest",
+    "convert-csv-to-json": "^3.20.0",
     "js-yaml": "^4.1.0",
     "papaparse": "^5.5.3"
   },
