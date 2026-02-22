@@ -348,8 +348,13 @@ describe('import-statements', () => {
       const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
       const doneDir = path.join(testDir, 'doc/agent/done/import/ubs/chf');
       const rulesDir = path.join(testDir, 'ledger/rules');
+      const ledgerDir = path.join(testDir, 'ledger');
       fs.mkdirSync(pendingDir, { recursive: true });
       fs.mkdirSync(rulesDir, { recursive: true });
+      fs.mkdirSync(ledgerDir, { recursive: true });
+
+      // Create .hledger.journal (required for year-based import)
+      fs.writeFileSync(path.join(testDir, '.hledger.journal'), '; main journal\n');
 
       const csvPath = path.join(pendingDir, 'transactions.csv');
       fs.writeFileSync(csvPath, 'data');
@@ -384,13 +389,25 @@ describe('import-statements', () => {
       // Check file was moved
       expect(fs.existsSync(csvPath)).toBe(false);
       expect(fs.existsSync(path.join(doneDir, 'transactions.csv'))).toBe(true);
+
+      // Check year journal was created
+      expect(fs.existsSync(path.join(ledgerDir, '2026.journal'))).toBe(true);
+
+      // Check include was added to main journal
+      const mainJournal = fs.readFileSync(path.join(testDir, '.hledger.journal'), 'utf-8');
+      expect(mainJournal).toContain('include ledger/2026.journal');
     });
 
     it('should handle hledger import errors', async () => {
       const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
       const rulesDir = path.join(testDir, 'ledger/rules');
+      const ledgerDir = path.join(testDir, 'ledger');
       fs.mkdirSync(pendingDir, { recursive: true });
       fs.mkdirSync(rulesDir, { recursive: true });
+      fs.mkdirSync(ledgerDir, { recursive: true });
+
+      // Create .hledger.journal (required for year-based import)
+      fs.writeFileSync(path.join(testDir, '.hledger.journal'), '; main journal\n');
 
       const csvPath = path.join(pendingDir, 'transactions.csv');
       fs.writeFileSync(csvPath, 'data');
@@ -424,6 +441,177 @@ describe('import-statements', () => {
       expect(parsed.success).toBe(false);
       expect(parsed.error).toContain('Import failed');
       expect(parsed.error).toContain('Parse error');
+    });
+
+    it('should fail if .hledger.journal does not exist', async () => {
+      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
+      const rulesDir = path.join(testDir, 'ledger/rules');
+      fs.mkdirSync(pendingDir, { recursive: true });
+      fs.mkdirSync(rulesDir, { recursive: true });
+
+      const csvPath = path.join(pendingDir, 'transactions.csv');
+      fs.writeFileSync(csvPath, 'data');
+
+      const rulesPath = path.join(rulesDir, 'ubs.rules');
+      fs.writeFileSync(rulesPath, `source ${csvPath}`);
+
+      const mockExecutor = createMockHledgerExecutor(
+        new Map([
+          [
+            'print',
+            {
+              stdout: '2026-01-01 Test\n    expenses:test CHF1\n    assets:bank CHF-1',
+              stderr: '',
+              exitCode: 0,
+            },
+          ],
+        ])
+      );
+
+      const result = await importStatementsCore(
+        testDir,
+        'accountant',
+        { checkOnly: false },
+        () => createMockConfig(),
+        mockExecutor
+      );
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error).toContain('.hledger.journal not found');
+    });
+  });
+
+  describe('year-based journal routing', () => {
+    it('should reject CSV with transactions from multiple years', async () => {
+      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
+      const rulesDir = path.join(testDir, 'ledger/rules');
+      fs.mkdirSync(pendingDir, { recursive: true });
+      fs.mkdirSync(rulesDir, { recursive: true });
+
+      const csvPath = path.join(pendingDir, 'transactions.csv');
+      fs.writeFileSync(csvPath, 'data');
+
+      const rulesPath = path.join(rulesDir, 'ubs.rules');
+      fs.writeFileSync(rulesPath, `source ${csvPath}`);
+
+      // Transactions spanning December 2025 and January 2026
+      const hledgerOutput = `2025-12-30 December Transaction
+    expenses:food                   CHF50.00
+    assets:bank:ubs:checking       CHF-50.00
+
+2026-01-05 January Transaction
+    expenses:food                   CHF25.00
+    assets:bank:ubs:checking       CHF-25.00
+`;
+
+      const mockExecutor = createMockHledgerExecutor(
+        new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
+      );
+
+      const result = await importStatementsCore(
+        testDir,
+        'accountant',
+        { checkOnly: true },
+        () => createMockConfig(),
+        mockExecutor
+      );
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.files[0].error).toContain('multiple years');
+      expect(parsed.files[0].error).toContain('2025');
+      expect(parsed.files[0].error).toContain('2026');
+      expect(parsed.summary.filesWithErrors).toBe(1);
+    });
+
+    it('should include transactionYear in file result for single-year CSV', async () => {
+      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
+      const rulesDir = path.join(testDir, 'ledger/rules');
+      fs.mkdirSync(pendingDir, { recursive: true });
+      fs.mkdirSync(rulesDir, { recursive: true });
+
+      const csvPath = path.join(pendingDir, 'transactions.csv');
+      fs.writeFileSync(csvPath, 'data');
+
+      const rulesPath = path.join(rulesDir, 'ubs.rules');
+      fs.writeFileSync(rulesPath, `source ${csvPath}`);
+
+      const hledgerOutput = `2026-02-01 Transaction One
+    expenses:food                   CHF10.00
+    assets:bank:ubs:checking       CHF-10.00
+
+2026-02-15 Transaction Two
+    expenses:travel                 CHF200.00
+    assets:bank:ubs:checking       CHF-200.00
+`;
+
+      const mockExecutor = createMockHledgerExecutor(
+        new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
+      );
+
+      const result = await importStatementsCore(
+        testDir,
+        'accountant',
+        { checkOnly: true },
+        () => createMockConfig(),
+        mockExecutor
+      );
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.files[0].transactionYear).toBe(2026);
+    });
+
+    it('should not duplicate include directive on subsequent imports', async () => {
+      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
+      const rulesDir = path.join(testDir, 'ledger/rules');
+      const ledgerDir = path.join(testDir, 'ledger');
+      fs.mkdirSync(pendingDir, { recursive: true });
+      fs.mkdirSync(rulesDir, { recursive: true });
+      fs.mkdirSync(ledgerDir, { recursive: true });
+
+      // Create .hledger.journal with existing include
+      fs.writeFileSync(
+        path.join(testDir, '.hledger.journal'),
+        '; main journal\ninclude ledger/2026.journal\n'
+      );
+      // Create existing year journal
+      fs.writeFileSync(path.join(ledgerDir, '2026.journal'), '; 2026 transactions\n');
+
+      const csvPath = path.join(pendingDir, 'transactions.csv');
+      fs.writeFileSync(csvPath, 'data');
+
+      const rulesPath = path.join(rulesDir, 'ubs.rules');
+      fs.writeFileSync(rulesPath, `source ${csvPath}`);
+
+      const hledgerOutput = `2026-03-01 Another Transaction
+    expenses:office                 CHF100.00
+    assets:bank:ubs:checking       CHF-100.00
+`;
+
+      const mockExecutor = createMockHledgerExecutor(
+        new Map([
+          ['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }],
+          ['import', { stdout: '', stderr: '', exitCode: 0 }],
+        ])
+      );
+
+      const result = await importStatementsCore(
+        testDir,
+        'accountant',
+        { checkOnly: false },
+        () => createMockConfig(),
+        mockExecutor
+      );
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(true);
+
+      // Check include was not duplicated
+      const mainJournal = fs.readFileSync(path.join(testDir, '.hledger.journal'), 'utf-8');
+      const includeCount = (mainJournal.match(/include ledger\/2026\.journal/g) || []).length;
+      expect(includeCount).toBe(1);
     });
   });
 

@@ -118,3 +118,24 @@ export function countTransactions(hledgerOutput: string): number {
 
   return count;
 }
+
+/**
+ * Extracts all unique years from transaction dates in hledger print output.
+ *
+ * @param hledgerOutput The stdout from hledger print command
+ * @returns Set of unique years found in transactions
+ */
+export function extractTransactionYears(hledgerOutput: string): Set<number> {
+  const years = new Set<number>();
+  const lines = hledgerOutput.split('\n');
+
+  for (const line of lines) {
+    // Transaction header starts with a date: YYYY-MM-DD
+    const match = line.match(/^(\d{4})-\d{2}-\d{2}\s+/);
+    if (match) {
+      years.add(parseInt(match[1], 10));
+    }
+  }
+
+  return years;
+}

@@ -1,20 +1,21 @@
 import { tool } from '@opencode-ai/plugin';
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
-import { loadRulesMapping, findRulesForCsv } from '../utils/rulesMatcher.ts';
+import { type ImportConfig, loadImportConfig } from '../utils/importConfig.ts';
+import { findRulesForCsv, loadRulesMapping } from '../utils/rulesMatcher.ts';
 import {
-  defaultHledgerExecutor,
-  parseUnknownPostings,
   countTransactions,
+  defaultHledgerExecutor,
+  extractTransactionYears,
   type HledgerExecutor,
+  parseUnknownPostings,
   type UnknownPosting,
 } from '../utils/hledgerExecutor.ts';
 import { parseRulesFile } from '../utils/rulesParser.ts';
-import { parseCsvFile, findMatchingCsvRow } from '../utils/csvParser.ts';
+import { findMatchingCsvRow, parseCsvFile } from '../utils/csvParser.ts';
 
 /**
- * Result for a single CSV file processing
+ * Result for single CSV file processing
  */
 interface FileResult {
   csv: string;
@@ -22,6 +23,7 @@ interface FileResult {
   totalTransactions: number;
   matchedTransactions: number;
   unknownPostings: UnknownPosting[];
+  transactionYear?: number;
   error?: string;
 }
 
@@ -42,6 +44,49 @@ interface ImportStatementsResult {
   message?: string;
   error?: string;
   hint?: string;
+}
+
+/**
+ * Ensures a year-specific journal file exists and is included in the main .hledger.journal.
+ * Creates the journal if it doesn't exist and adds the include directive if missing.
+ *
+ * @param directory The base directory containing the ledger
+ * @param year The year for the journal file
+ * @returns The path to the year journal file
+ */
+function ensureYearJournalExists(directory: string, year: number): string {
+  const ledgerDir = path.join(directory, 'ledger');
+  const yearJournalPath = path.join(ledgerDir, `${year}.journal`);
+  const mainJournalPath = path.join(directory, '.hledger.journal');
+
+  // Ensure ledger directory exists
+  if (!fs.existsSync(ledgerDir)) {
+    fs.mkdirSync(ledgerDir, { recursive: true });
+  }
+
+  // Create a year journal if it doesn't exist
+  if (!fs.existsSync(yearJournalPath)) {
+    fs.writeFileSync(yearJournalPath, `; ${year} transactions\n`);
+  }
+
+  // Ensure main journal exists
+  if (!fs.existsSync(mainJournalPath)) {
+    throw new Error(
+      `.hledger.journal not found at ${mainJournalPath}. Create it first with appropriate includes.`
+    );
+  }
+
+  // Check if the include directive already exists
+  const mainJournalContent = fs.readFileSync(mainJournalPath, 'utf-8');
+  const includeDirective = `include ledger/${year}.journal`;
+
+  if (!mainJournalContent.includes(includeDirective)) {
+    // Append include directive to the main journal
+    const newContent = mainJournalContent.trimEnd() + '\n' + includeDirective + '\n';
+    fs.writeFileSync(mainJournalPath, newContent);
+  }
+
+  return yearJournalPath;
 }
 
 /**
@@ -190,6 +235,24 @@ export async function importStatementsCore(
     const transactionCount = countTransactions(result.stdout);
     const matchedCount = transactionCount - unknownPostings.length;
 
+    // Extract transaction years and validate single-year constraint
+    const years = extractTransactionYears(result.stdout);
+    if (years.size > 1) {
+      const yearList = Array.from(years).sort().join(', ');
+      filesWithErrors++;
+      fileResults.push({
+        csv: path.relative(directory, csvFile),
+        rulesFile: path.relative(directory, rulesFile),
+        totalTransactions: transactionCount,
+        matchedTransactions: matchedCount,
+        unknownPostings: [],
+        error: `CSV contains transactions from multiple years (${yearList}). Split the CSV by year before importing.`,
+      });
+      continue;
+    }
+
+    const transactionYear = years.size === 1 ? Array.from(years)[0] : undefined;
+
     // If there are unknown postings, attach the full CSV row data for context
     if (unknownPostings.length > 0) {
       try {
@@ -198,7 +261,7 @@ export async function importStatementsCore(
         const csvRows = parseCsvFile(csvFile, rulesConfig);
 
         for (const posting of unknownPostings) {
-          const csvRow = findMatchingCsvRow(
+          posting.csvRow = findMatchingCsvRow(
             {
               date: posting.date,
               description: posting.description,
@@ -207,7 +270,6 @@ export async function importStatementsCore(
             csvRows,
             rulesConfig
           );
-          posting.csvRow = csvRow;
         }
       } catch {
         // If CSV parsing fails, continue without the row data
@@ -228,6 +290,7 @@ export async function importStatementsCore(
       totalTransactions: transactionCount,
       matchedTransactions: matchedCount,
       unknownPostings,
+      transactionYear,
     });
   }
 
@@ -280,11 +343,56 @@ export async function importStatementsCore(
 
   // All clear - run actual import for each file
   const importedFiles: string[] = [];
-  for (const csvFile of csvFiles) {
-    const rulesFile = findRulesForCsv(csvFile, rulesMapping);
+  for (const fileResult of fileResults) {
+    const csvFile = path.join(directory, fileResult.csv);
+    const rulesFile = fileResult.rulesFile ? path.join(directory, fileResult.rulesFile) : null;
     if (!rulesFile) continue; // Already handled above
 
-    const result = await hledgerExecutor(['import', csvFile, '--rules-file', rulesFile]);
+    // Ensure the year journal exists
+    const year = fileResult.transactionYear;
+    if (!year) {
+      return JSON.stringify({
+        success: false,
+        files: fileResults,
+        summary: {
+          filesProcessed: csvFiles.length,
+          filesWithErrors: 1,
+          filesWithoutRules,
+          totalTransactions,
+          matched: totalMatched,
+          unknown: totalUnknown,
+        },
+        error: `No transactions found in ${fileResult.csv}`,
+      } satisfies ImportStatementsResult);
+    }
+
+    let yearJournalPath: string;
+    try {
+      yearJournalPath = ensureYearJournalExists(directory, year);
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        files: fileResults,
+        summary: {
+          filesProcessed: csvFiles.length,
+          filesWithErrors: 1,
+          filesWithoutRules,
+          totalTransactions,
+          matched: totalMatched,
+          unknown: totalUnknown,
+        },
+        error: error instanceof Error ? error.message : String(error),
+      } satisfies ImportStatementsResult);
+    }
+
+    const result = await hledgerExecutor([
+      'import',
+      '-f',
+      yearJournalPath,
+      csvFile,
+      '--rules-file',
+      rulesFile,
+    ]);
 
     if (result.exitCode !== 0) {
       return JSON.stringify({
@@ -298,14 +406,14 @@ export async function importStatementsCore(
           matched: totalMatched,
           unknown: totalUnknown,
         },
-        error: `Import failed for ${path.relative(directory, csvFile)}: ${result.stderr.trim()}`,
+        error: `Import failed for ${fileResult.csv}: ${result.stderr.trim()}`,
       } satisfies ImportStatementsResult);
     }
 
     importedFiles.push(csvFile);
   }
 
-  // Move imported files to done directory
+  // Move imported files to the done directory
   for (const csvFile of importedFiles) {
     const relativePath = path.relative(pendingDir, csvFile);
     const destPath = path.join(doneDir, relativePath);

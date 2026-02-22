@@ -5,6 +5,20 @@ The `import-statements` tool imports classified CSV bank statements into hledger
 - **Check mode** (`checkOnly: true`, default): Validates transactions and reports any that cannot be categorized
 - **Import mode** (`checkOnly: false`): Imports validated transactions and moves processed files to the done directory
 
+## Year-Based Journal Routing
+
+Transactions are automatically routed to year-specific journal files based on transaction dates:
+
+- Transactions from 2025 → `ledger/2025.journal`
+- Transactions from 2026 → `ledger/2026.journal`
+
+**Automatic setup:**
+
+- If the year journal doesn't exist, it is created automatically
+- The include directive (`include ledger/YYYY.journal`) is added to `.hledger.journal` if not already present
+
+**Constraint:** Each CSV file must contain transactions from a single year. CSVs with transactions spanning multiple years are rejected during check mode with an error message listing the years found.
+
 ## Arguments
 
 | Argument    | Type    | Default | Description                                 |
@@ -33,7 +47,8 @@ When all transactions have matching rules:
       "csv": "{paths.pending}/ubs/chf/transactions-ubs-0235-90250546.0.csv",
       "rulesFile": "{paths.rules}/ubs-0235-90250546.0.rules",
       "transactions": 25,
-      "unknownPostings": []
+      "unknownPostings": [],
+      "transactionYear": 2026
     }
   ],
   "summary": {
@@ -248,5 +263,43 @@ If the config file is missing or invalid:
   "success": false,
   "error": "Failed to load configuration: Configuration file not found: config/import/providers.yaml",
   "hint": "Ensure config/import/providers.yaml exists with a 'rules' path configured"
+}
+```
+
+### Multi-Year CSV Error
+
+If a CSV contains transactions from multiple years:
+
+```json
+{
+  "success": false,
+  "files": [
+    {
+      "csv": "{paths.pending}/ubs/chf/transactions.csv",
+      "rulesFile": "{paths.rules}/ubs.rules",
+      "totalTransactions": 10,
+      "matchedTransactions": 10,
+      "unknownPostings": [],
+      "error": "CSV contains transactions from multiple years (2025, 2026). Split the CSV by year before importing."
+    }
+  ],
+  "summary": {
+    "filesProcessed": 1,
+    "filesWithErrors": 1,
+    "totalTransactions": 0,
+    "matched": 0,
+    "unknown": 0
+  }
+}
+```
+
+### Missing Main Journal
+
+If `.hledger.journal` doesn't exist when attempting import:
+
+```json
+{
+  "success": false,
+  "error": ".hledger.journal not found at /path/to/.hledger.journal. Create it first with appropriate includes."
 }
 ```
