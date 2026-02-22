@@ -27,6 +27,7 @@ describe('importConfig', () => {
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   revolut:
@@ -47,6 +48,7 @@ providers:
         pending: 'doc/agent/todo/import',
         done: 'doc/agent/done/import',
         unrecognized: 'statements/import/unrecognized',
+        rules: 'ledger/rules',
       });
 
       expect(config.providers.revolut).toBeDefined();
@@ -72,6 +74,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   revolut:
@@ -167,6 +170,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 `
       );
 
@@ -184,6 +188,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers: {}
 `
@@ -203,6 +208,7 @@ providers: {}
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   revolut:
@@ -226,6 +232,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   revolut:
@@ -251,6 +258,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   revolut:
@@ -277,6 +285,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   revolut:
@@ -302,6 +311,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   ubs:
@@ -328,6 +338,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   ubs:
@@ -336,7 +347,7 @@ providers:
         currencyField: Currency
         skipRows: 9
         delimiter: ";"
-        renamePattern: "transactions-ubs-{kontonummer}.csv"
+        renamePattern: "transactions-ubs-{account-number}.csv"
     currencies:
       CHF: chf
 `
@@ -347,7 +358,7 @@ providers:
       expect(config.providers.ubs.detect[0].skipRows).toBe(9);
       expect(config.providers.ubs.detect[0].delimiter).toBe(';');
       expect(config.providers.ubs.detect[0].renamePattern).toBe(
-        'transactions-ubs-{kontonummer}.csv'
+        'transactions-ubs-{account-number}.csv'
       );
     });
 
@@ -360,6 +371,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   ubs:
@@ -368,7 +380,7 @@ providers:
         currencyField: Currency
         skipRows: 9
         metadata:
-          - field: kontonummer
+          - field: account-number
             row: 0
             column: 1
             normalize: spaces-to-dashes
@@ -384,7 +396,7 @@ providers:
 
       expect(config.providers.ubs.detect[0].metadata).toHaveLength(2);
       expect(config.providers.ubs.detect[0].metadata![0]).toEqual({
-        field: 'kontonummer',
+        field: 'account-number',
         row: 0,
         column: 1,
         normalize: 'spaces-to-dashes',
@@ -405,6 +417,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   ubs:
@@ -431,6 +444,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   ubs:
@@ -457,6 +471,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   ubs:
@@ -464,7 +479,7 @@ providers:
       - header: "Date,Amount,Balance"
         currencyField: Currency
         metadata:
-          - field: kontonummer
+          - field: account-number
             row: 0
     currencies:
       CHF: chf
@@ -485,6 +500,7 @@ providers:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   ubs:
@@ -492,7 +508,7 @@ providers:
       - header: "Date,Amount,Balance"
         currencyField: Currency
         metadata:
-          - field: kontonummer
+          - field: account-number
             row: 0
             column: 1
             normalize: invalid-type

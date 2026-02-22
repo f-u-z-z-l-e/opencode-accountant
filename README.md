@@ -97,6 +97,7 @@ paths:
   pending: doc/agent/todo/import
   done: doc/agent/done/import
   unrecognized: statements/import/unrecognized
+  rules: ledger/rules
 
 providers:
   revolut:
@@ -121,9 +122,9 @@ providers:
         currencyField: Currency
         skipRows: 9
         delimiter: ';'
-        renamePattern: 'transactions-ubs-{accountnumber}.csv'
+        renamePattern: 'transactions-ubs-{account-number}.csv'
         metadata:
-          - field: accountnumber
+          - field: account-number
             row: 0
             column: 1
             normalize: spaces-to-dashes
@@ -143,6 +144,7 @@ providers:
 | `pending`      | Base path for classified files awaiting import  |
 | `done`         | Base path for archived files after import       |
 | `unrecognized` | Directory for files that couldn't be classified |
+| `rules`        | Directory containing hledger `.rules` files     |
 
 **Provider Detection Rules:**
 
@@ -175,15 +177,18 @@ your-project/
 ├── config/
 │   └── import/
 │       └── providers.yaml
+├── ledger/
+│   └── rules/                                   # hledger rules files
+│       └── <provider>-{account-number}.rules    # {account-number} from metadata extraction
 ├── statements/
-│   └── import/                  # Drop CSV files here
-│       └── unrecognized/         # Unclassified files moved here
+│   └── import/                                  # Drop CSV files here
+│       └── unrecognized/                        # Unclassified files moved here
 └── doc/
     └── agent/
         ├── todo/
         │   └── import/
-        │       └── <provider>/   # e.g. revolut
-        │           └── <currency>/   # e.g. chf, eur, usd, btc
+        │       └── <provider>/                  # e.g. revolut
+        │           └── <currency>/              # e.g. chf, eur, usd, btc
         └── done/
             └── import/
                 └── <provider>/
@@ -196,7 +201,40 @@ your-project/
 2. Run `classify-statements` tool
 3. Files are moved to `doc/agent/todo/import/<provider>/<currency>/`
 4. Unrecognized files are moved to `statements/import/unrecognized/`
-5. After successful import, files should be moved to `doc/agent/done/import/`
+5. Run `import-statements` with `checkOnly: true` to validate transactions
+6. If unknown postings found: Add rules to the `.rules` file, repeat step 5
+7. Once all transactions match: Run `import-statements` with `checkOnly: false`
+8. Transactions are imported to journal, CSV files moved to `doc/agent/done/import/`
+
+### Statement Import
+
+The `import-statements` tool imports classified CSV statements into hledger using rules files. It validates transactions before import and identifies any that cannot be categorized.
+
+#### Tool Arguments
+
+| Argument    | Type    | Default | Description                                 |
+| ----------- | ------- | ------- | ------------------------------------------- |
+| `provider`  | string  | -       | Filter by provider (e.g., `revolut`, `ubs`) |
+| `currency`  | string  | -       | Filter by currency (e.g., `chf`, `eur`)     |
+| `checkOnly` | boolean | `true`  | If true, only validate without importing    |
+
+#### Rules File Matching
+
+The tool matches CSV files to their rules files by parsing the `source` directive in each `.rules` file. For example, if `ubs-account.rules` contains:
+
+```
+source ../../doc/agent/todo/import/ubs/chf/transactions.csv
+```
+
+The tool will use that rules file when processing `transactions.csv`.
+
+See the hledger documentation for details on rules file format and syntax.
+
+#### Unknown Postings
+
+When a transaction doesn't match any `if` pattern in the rules file, hledger assigns it to `income:unknown` or `expenses:unknown` depending on the transaction direction. The tool reports these so you can add appropriate rules.
+
+For detailed output format examples, see [`docs/tools/import-statements.md`](docs/tools/import-statements.md).
 
 ## Development
 

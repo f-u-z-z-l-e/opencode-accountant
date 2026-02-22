@@ -13,6 +13,7 @@ describe('classify-statements', () => {
       pending: 'doc/agent/todo/import',
       done: 'doc/agent/done/import',
       unrecognized: 'statements/import/unrecognized',
+      rules: 'ledger/rules',
     },
     providers: {
       revolut: {
@@ -293,6 +294,7 @@ Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
           pending: 'doc/agent/todo/import',
           done: 'doc/agent/done/import',
           unrecognized: 'statements/import/unrecognized',
+          rules: 'ledger/rules',
         },
         providers: {
           testbank: {

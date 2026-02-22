@@ -3,7 +3,7 @@ import * as path from 'path';
 import yaml from 'js-yaml';
 
 export interface MetadataExtraction {
-  field: string; // Placeholder name to use in renamePattern (e.g., "kontonummer")
+  field: string; // Placeholder name to use in renamePattern (e.g., "account-number")
   row: number; // Which row to extract from (0-indexed within skipRows)
   column: number; // Which column to extract from (0-indexed)
   normalize?: 'spaces-to-dashes'; // Optional: normalization type
@@ -29,6 +29,7 @@ export interface ImportPaths {
   pending: string;
   done: string;
   unrecognized: string;
+  rules: string;
 }
 
 export interface ImportConfig {
@@ -38,7 +39,13 @@ export interface ImportConfig {
 
 const CONFIG_FILE = 'config/import/providers.yaml';
 
-const REQUIRED_PATH_FIELDS: (keyof ImportPaths)[] = ['import', 'pending', 'done', 'unrecognized'];
+const REQUIRED_PATH_FIELDS: (keyof ImportPaths)[] = [
+  'import',
+  'pending',
+  'done',
+  'unrecognized',
+  'rules',
+];
 const REQUIRED_DETECTION_FIELDS: (keyof DetectionRule)[] = ['header', 'currencyField'];
 
 /**
@@ -63,6 +70,7 @@ function validatePaths(paths: unknown): ImportPaths {
     pending: pathsObj.pending as string,
     done: pathsObj.done as string,
     unrecognized: pathsObj.unrecognized as string,
+    rules: pathsObj.rules as string,
   };
 }
 
