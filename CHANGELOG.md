@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.16](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.15...v0.0.16) (2026-02-22)
+
+
+### Bug Fixes
+
+* use strict validation after import ([519a652](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/519a652f3179cbf458c6abaefc715580cd38ec7f))
+
 ## [0.0.15](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.14...v0.0.15) (2026-02-22)
 
 
