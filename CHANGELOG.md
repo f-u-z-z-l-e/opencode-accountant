@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.0.10](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.9...v0.0.10) (2026-02-22)
+
+
+### Bug Fixes
+
+* add hledger import ([a2242da](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/a2242dae77c5d56aae1dbb72259e222583a508a2))
+* update accountant agent definition ([19ffcb5](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/19ffcb524f3c708a383887af5fff6479f4c769b6))
+* update readme file, and add more tests ([1d07d5f](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/1d07d5fa448b78f37664de3e1345688cddccfb1c))
+
 ## [0.0.9](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.8...v0.0.9) (2026-02-21)
 
 
