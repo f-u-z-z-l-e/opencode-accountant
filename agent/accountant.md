@@ -29,13 +29,9 @@ permission:
 - `ledger/currencies/` - Currency exchange rate files
 - `ledger/YYYY.journal` - Annual hledger journal files
 - `ledger/rules` - hledger rules files
-- `statements/` - Bank and broker account statements
-- `statements/import` - Upload folder for new statements to process
-- `statements/{provider}/YYYY` - Processed statements organized by source and year
-- `doc/agent/todo/` - Agent's task work directory
-- `doc/agent/done/` - Tasks completed by the agent
 - `config/conventions/` - Accounting conventions
-- `config/rules/` - import rules files
+- `config/import/providers.yaml` - import rules configuration file
+- `config/prices.yaml` - currency pairs configuration file
 
 ## Conventions & Workflow
 
@@ -58,13 +54,11 @@ When working with accounting tasks:
 
 ## Statement Import Workflow
 
-Use the `import-statements` tool to import bank statements. The workflow:
+Use the `import-statements` tool to import bank statements. Do not edit the ledger manually! The workflow:
 
-1. **Prepare**: Drop CSV files into `statements/import/`
-2. **Classify**: Run `classify-statements` tool to move files to `doc/agent/todo/import/<provider>/<currency>/`
+1. **Prepare**: Drop CSV files into the incoming import folder configured in `config/import/providers.yaml` 
+2. **Classify**: Run `classify-statements` tool to move files to the configured import pending folder
 3. **Validate (check mode)**: Run `import-statements(checkOnly: true)` to validate transactions
-   - Tool runs `hledger print` dry run to check for unknown postings
-   - Unknown postings appear as `income:unknown` or `expenses:unknown`
 4. **Handle unknowns**: If unknown postings found:
    - Tool returns full CSV row data for each unknown posting
    - Analyze the CSV row data to understand the transaction
@@ -75,7 +69,7 @@ Use the `import-statements` tool to import bank statements. The workflow:
 
 ### Rules Files
 
-- Rules files are in `config/rules/` directory
+- The location of the rules files is configured in `config/import/providers.yaml`
 - Match CSV to rules file via the `source` directive in each `.rules` file
 - Use field names from the `fields` directive for matching
 - Unknown account pattern: `income:unknown` (positive amounts) / `expenses:unknown` (negative amounts)
