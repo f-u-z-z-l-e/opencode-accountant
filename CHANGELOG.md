@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.12](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.11...v0.0.12) (2026-02-22)
+
+
+### Bug Fixes
+
+* update agent instruction ([c42999c](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/c42999c85927aa002955937a648e8e0d4dce29f9))
+
 ## [0.0.11](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.10...v0.0.11) (2026-02-22)
 
 
