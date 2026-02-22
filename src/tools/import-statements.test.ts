@@ -563,6 +563,116 @@ describe('import-statements', () => {
       expect(parsed.files[0].transactionYear).toBe(2026);
     });
 
+    it('should add include directive when existing one is commented out with #', async () => {
+      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
+      const rulesDir = path.join(testDir, 'ledger/rules');
+      const ledgerDir = path.join(testDir, 'ledger');
+      fs.mkdirSync(pendingDir, { recursive: true });
+      fs.mkdirSync(rulesDir, { recursive: true });
+      fs.mkdirSync(ledgerDir, { recursive: true });
+
+      // Create .hledger.journal with commented-out include
+      fs.writeFileSync(
+        path.join(testDir, '.hledger.journal'),
+        '; main journal\ninclude ledger/2025.journal\n#include ledger/2026.journal\n'
+      );
+
+      const csvPath = path.join(pendingDir, 'transactions.csv');
+      fs.writeFileSync(csvPath, 'data');
+
+      const rulesPath = path.join(rulesDir, 'ubs.rules');
+      fs.writeFileSync(rulesPath, `source ${csvPath}`);
+
+      const hledgerOutput = `2026-03-01 Transaction
+    expenses:office                 CHF100.00
+    assets:bank:ubs:checking       CHF-100.00
+`;
+
+      const mockExecutor = createMockHledgerExecutor(
+        new Map([
+          ['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }],
+          ['import', { stdout: '', stderr: '', exitCode: 0 }],
+        ])
+      );
+
+      const result = await importStatementsCore(
+        testDir,
+        'accountant',
+        { checkOnly: false },
+        () => createMockConfig(),
+        mockExecutor
+      );
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(true);
+
+      // Check that a new (uncommented) include directive was added
+      const mainJournal = fs.readFileSync(path.join(testDir, '.hledger.journal'), 'utf-8');
+      const lines = mainJournal.split('\n');
+      const uncommentedIncludes = lines.filter(
+        (line) => line.trim() === 'include ledger/2026.journal'
+      );
+      expect(uncommentedIncludes.length).toBe(1);
+
+      // The commented one should still be there
+      expect(mainJournal).toContain('#include ledger/2026.journal');
+    });
+
+    it('should add include directive when existing one is commented out with ;', async () => {
+      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
+      const rulesDir = path.join(testDir, 'ledger/rules');
+      const ledgerDir = path.join(testDir, 'ledger');
+      fs.mkdirSync(pendingDir, { recursive: true });
+      fs.mkdirSync(rulesDir, { recursive: true });
+      fs.mkdirSync(ledgerDir, { recursive: true });
+
+      // Create .hledger.journal with semicolon-commented include
+      fs.writeFileSync(
+        path.join(testDir, '.hledger.journal'),
+        '; main journal\ninclude ledger/2025.journal\n; include ledger/2026.journal\n'
+      );
+
+      const csvPath = path.join(pendingDir, 'transactions.csv');
+      fs.writeFileSync(csvPath, 'data');
+
+      const rulesPath = path.join(rulesDir, 'ubs.rules');
+      fs.writeFileSync(rulesPath, `source ${csvPath}`);
+
+      const hledgerOutput = `2026-03-01 Transaction
+    expenses:office                 CHF100.00
+    assets:bank:ubs:checking       CHF-100.00
+`;
+
+      const mockExecutor = createMockHledgerExecutor(
+        new Map([
+          ['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }],
+          ['import', { stdout: '', stderr: '', exitCode: 0 }],
+        ])
+      );
+
+      const result = await importStatementsCore(
+        testDir,
+        'accountant',
+        { checkOnly: false },
+        () => createMockConfig(),
+        mockExecutor
+      );
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(true);
+
+      // Check that a new (uncommented) include directive was added
+      const mainJournal = fs.readFileSync(path.join(testDir, '.hledger.journal'), 'utf-8');
+      const lines = mainJournal.split('\n');
+      const uncommentedIncludes = lines.filter(
+        (line) => line.trim() === 'include ledger/2026.journal'
+      );
+      expect(uncommentedIncludes.length).toBe(1);
+
+      // The commented one should still be there
+      expect(mainJournal).toContain('; include ledger/2026.journal');
+    });
+
     it('should not duplicate include directive on subsequent imports', async () => {
       const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
       const rulesDir = path.join(testDir, 'ledger/rules');

@@ -76,11 +76,18 @@ function ensureYearJournalExists(directory: string, year: number): string {
     );
   }
 
-  // Check if the include directive already exists
+  // Check if the include directive already exists (not commented out)
   const mainJournalContent = fs.readFileSync(mainJournalPath, 'utf-8');
   const includeDirective = `include ledger/${year}.journal`;
 
-  if (!mainJournalContent.includes(includeDirective)) {
+  const lines = mainJournalContent.split('\n');
+  const includeExists = lines.some((line) => {
+    const trimmed = line.trim();
+    // Must start with 'include' (not commented with # or ;)
+    return trimmed === includeDirective || trimmed.startsWith(includeDirective + ' ');
+  });
+
+  if (!includeExists) {
     // Append include directive to the main journal
     const newContent = mainJournalContent.trimEnd() + '\n' + includeDirective + '\n';
     fs.writeFileSync(mainJournalPath, newContent);
