@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.14](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.13...v0.0.14) (2026-02-22)
+
+
+### Bug Fixes
+
+* year based journal ([2e6865c](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/2e6865cf4aabd59bc4936a16cfae9fb3231d8162))
+
 ## [0.0.13](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.12...v0.0.13) (2026-02-22)
 
 
