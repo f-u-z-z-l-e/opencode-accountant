@@ -1,6 +1,6 @@
 {
   "name": "@fuzzle/opencode-accountant",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "An OpenCode accounting agent, specialized in double-entry-bookkepping with hledger",
   "author": {
     "name": "ali bengali",
