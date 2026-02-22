@@ -15,6 +15,12 @@ The `import-statements` tool imports classified CSV bank statements into hledger
 
 ## Output Format
 
+**Note on paths:** All file paths in the examples below use `{paths.*}` variables. These are configured in `config/import/providers.yaml`. Default values are:
+
+- `{paths.pending}` = `import/pending`
+- `{paths.done}` = `import/done`
+- `{paths.rules}` = `ledger/rules`
+
 ### Check Mode - All Transactions Matched
 
 When all transactions have matching rules:
@@ -24,8 +30,8 @@ When all transactions have matching rules:
   "success": true,
   "files": [
     {
-      "csv": "doc/agent/todo/import/ubs/chf/transactions-ubs-0235-90250546.0.csv",
-      "rulesFile": "ledger/rules/ubs-0235-90250546.0.rules",
+      "csv": "{paths.pending}/ubs/chf/transactions-ubs-0235-90250546.0.csv",
+      "rulesFile": "{paths.rules}/ubs-0235-90250546.0.rules",
       "transactions": 25,
       "unknownPostings": []
     }
@@ -49,8 +55,8 @@ When transactions don't match any `if` pattern in the rules file, the tool retur
   "success": false,
   "files": [
     {
-      "csv": "doc/agent/todo/import/ubs/chf/transactions-ubs-0235-90250546.0.csv",
-      "rulesFile": "ledger/rules/ubs-0235-90250546.0.rules",
+      "csv": "{paths.pending}/ubs/chf/transactions-ubs-0235-90250546.0.csv",
+      "rulesFile": "{paths.rules}/ubs-0235-90250546.0.rules",
       "transactions": 25,
       "unknownPostings": [
         {
@@ -118,7 +124,7 @@ When a CSV file has no matching rules file:
   "success": false,
   "files": [
     {
-      "csv": "doc/agent/todo/import/ubs/chf/transactions.csv",
+      "csv": "{paths.pending}/ubs/chf/transactions.csv",
       "error": "No matching rules file found. Create a rules file with 'source' directive pointing to this CSV."
     }
   ],
@@ -138,10 +144,10 @@ When importing with all transactions matched:
   "success": true,
   "files": [
     {
-      "csv": "doc/agent/todo/import/ubs/chf/transactions.csv",
-      "rulesFile": "ledger/rules/ubs.rules",
+      "csv": "{paths.pending}/ubs/chf/transactions.csv",
+      "rulesFile": "{paths.rules}/ubs.rules",
       "imported": true,
-      "movedTo": "doc/agent/done/import/ubs/chf/transactions.csv"
+      "movedTo": "{paths.done}/ubs/chf/transactions.csv"
     }
   ],
   "summary": {
@@ -221,8 +227,8 @@ If hledger fails to parse a CSV or rules file:
   "success": false,
   "files": [
     {
-      "csv": "doc/agent/todo/import/ubs/chf/transactions.csv",
-      "rulesFile": "ledger/rules/ubs.rules",
+      "csv": "{paths.pending}/ubs/chf/transactions.csv",
+      "rulesFile": "{paths.rules}/ubs.rules",
       "error": "hledger error: Parse error at line 5: invalid date format"
     }
   ],

@@ -8,16 +8,24 @@ import {
   type PricesConfig,
 } from '../utils/pricesConfig.ts';
 
+/**
+ * Function type for fetching price data from external sources
+ */
 // eslint-disable-next-line no-unused-vars
 export type PriceFetcher = (args: string[]) => Promise<string>;
 
-// Default implementation using Bun's shell
+/**
+ * Executes pricehist command using Bun's shell
+ */
 export async function defaultPriceFetcher(cmdArgs: string[]): Promise<string> {
   // Bun's template literal shell execution uses cmdArgs
   const result = await $`pricehist ${cmdArgs}`.quiet();
   return result.stdout.toString().trim();
 }
 
+/**
+ * Returns yesterday's date in YYYY-MM-DD format
+ */
 function getYesterday(): string {
   const d = new Date();
   d.setDate(d.getDate() - 1);
@@ -36,8 +44,9 @@ export function parsePriceLine(line: string): { date: string; formattedLine: str
   };
 }
 
-// Filter price lines to only include dates within the requested range
-// Also strips timestamps and sorts by date
+/**
+ * Filters price lines to date range and sorts chronologically
+ */
 export function filterPriceLinesByDateRange(
   priceLines: string[],
   startDate: string,
@@ -53,6 +62,9 @@ export function filterPriceLinesByDateRange(
     .map((parsed) => parsed.formattedLine);
 }
 
+/**
+ * Updates journal file with new prices, deduplicating by date
+ */
 function updateJournalWithPrices(journalPath: string, newPriceLines: string[]): void {
   // Read existing lines (or empty array if file doesn't exist)
   let existingLines: string[] = [];

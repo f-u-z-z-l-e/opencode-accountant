@@ -4,6 +4,9 @@ import * as fs from 'fs';
 import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
 import { detectProvider, type DetectionResult } from '../utils/providerDetector.ts';
 
+/**
+ * Result for a single classified CSV file
+ */
 interface ClassifiedFile {
   filename: string;
   originalFilename?: string;
@@ -12,16 +15,25 @@ interface ClassifiedFile {
   targetPath: string;
 }
 
+/**
+ * Result for a file that couldn't be classified
+ */
 interface UnrecognizedFile {
   filename: string;
   targetPath: string;
 }
 
+/**
+ * Collision detected when target file already exists
+ */
 interface FileCollision {
   filename: string;
   existingPath: string;
 }
 
+/**
+ * Overall result of the classify-statements tool
+ */
 interface ClassifyResult {
   success: boolean;
   classified: ClassifiedFile[];
