@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.15](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.14...v0.0.15) (2026-02-22)
+
+
+### Bug Fixes
+
+* add include directive for commented out case ([4208bd1](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/4208bd17d0e8f4b4a88daf54fdf4d7b04eb2313e))
+
 ## [0.0.14](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.13...v0.0.14) (2026-02-22)
 
 
