@@ -10,6 +10,7 @@ import {
   type HledgerExecutor,
   parseUnknownPostings,
   type UnknownPosting,
+  validateLedger,
 } from '../utils/hledgerExecutor.ts';
 import { parseRulesFile } from '../utils/rulesParser.ts';
 import { findMatchingCsvRow, parseCsvFile } from '../utils/csvParser.ts';
@@ -418,6 +419,28 @@ export async function importStatementsCore(
     }
 
     importedFiles.push(csvFile);
+  }
+
+  // Validate the ledger after all imports to ensure integrity
+  // This catches issues like balance assertion failures from misconfigured rules
+  const mainJournalPath = path.join(directory, '.hledger.journal');
+  const validationResult = await validateLedger(mainJournalPath, hledgerExecutor);
+
+  if (!validationResult.valid) {
+    return JSON.stringify({
+      success: false,
+      files: fileResults,
+      summary: {
+        filesProcessed: csvFiles.length,
+        filesWithErrors: 1,
+        filesWithoutRules,
+        totalTransactions,
+        matched: totalMatched,
+        unknown: totalUnknown,
+      },
+      error: `Ledger validation failed after import: ${validationResult.errors.join('; ')}`,
+      hint: 'The import created invalid transactions. Check your rules file configuration (e.g., balance vs balance2 for balance assertions). CSV files have NOT been moved to done.',
+    } satisfies ImportStatementsResult);
   }
 
   // Move imported files to the done directory

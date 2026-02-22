@@ -139,3 +139,44 @@ export function extractTransactionYears(hledgerOutput: string): Set<number> {
 
   return years;
 }
+
+/**
+ * Result of ledger validation
+ */
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+/**
+ * Validates the ledger by running hledger check --strict and hledger bal.
+ * This ensures the ledger is in a valid state with no balance assertion failures,
+ * undeclared accounts, or other issues.
+ *
+ * @param mainJournalPath Path to the main .hledger.journal file
+ * @param executor Optional hledger executor (for testing)
+ * @returns Validation result with any errors found
+ */
+export async function validateLedger(
+  mainJournalPath: string,
+  executor: HledgerExecutor = defaultHledgerExecutor
+): Promise<ValidationResult> {
+  const errors: string[] = [];
+
+  // Run hledger check --strict to verify ledger integrity
+  // This checks balance assertions, account declarations, and more
+  const checkResult = await executor(['check', '--strict', '-f', mainJournalPath]);
+  if (checkResult.exitCode !== 0) {
+    const errorMsg = checkResult.stderr.trim() || checkResult.stdout.trim();
+    errors.push(`hledger check --strict failed: ${errorMsg}`);
+  }
+
+  // Run hledger bal to verify the ledger parses correctly and balances compute
+  const balResult = await executor(['bal', '-f', mainJournalPath]);
+  if (balResult.exitCode !== 0) {
+    const errorMsg = balResult.stderr.trim() || balResult.stdout.trim();
+    errors.push(`hledger bal failed: ${errorMsg}`);
+  }
+
+  return { valid: errors.length === 0, errors };
+}
