@@ -1,4 +1,3 @@
-import { tool } from '@opencode-ai/plugin';
 import * as fs from 'fs';
 import * as path from 'path';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
@@ -482,51 +481,3 @@ export async function importStatementsCore(
     message: `Successfully imported ${totalTransactions} transaction(s) from ${importedFiles.length} file(s)`,
   } satisfies ImportStatementsResult);
 }
-
-export default tool({
-  description: `ACCOUNTANT AGENT ONLY: Import classified bank statement CSVs into hledger using rules files.
-
-This tool processes CSV files in the pending import directory and uses hledger's CSV import capabilities with matching rules files.
-
-**Check Mode (checkOnly: true, default):**
-- Runs hledger print to preview transactions
-- Identifies transactions with 'income:unknown' or 'expenses:unknown' accounts
-- These indicate missing rules that need to be added
-
-**Import Mode (checkOnly: false):**
-- First validates all transactions have known accounts
-- If any unknowns exist, aborts and reports them
-- If all clean, imports transactions and moves CSVs to done directory
-
-**Workflow:**
-1. Run with checkOnly: true (or no args)
-2. If unknowns found, add rules to the appropriate .rules file
-3. Repeat until no unknowns
-4. Run with checkOnly: false to import`,
-  args: {
-    provider: tool.schema
-      .string()
-      .optional()
-      .describe('Filter by provider (e.g., "revolut", "ubs"). If omitted, process all providers.'),
-    currency: tool.schema
-      .string()
-      .optional()
-      .describe(
-        'Filter by currency (e.g., "chf", "eur"). If omitted, process all currencies for the provider.'
-      ),
-    checkOnly: tool.schema
-      .boolean()
-      .optional()
-      .describe(
-        'If true (default), only check for unknown accounts without importing. Set to false to perform actual import.'
-      ),
-  },
-  async execute(params, context) {
-    const { directory, agent } = context;
-    return importStatementsCore(directory, agent, {
-      provider: params.provider,
-      currency: params.currency,
-      checkOnly: params.checkOnly,
-    });
-  },
-});
