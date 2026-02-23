@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.17](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.16...v0.0.17) (2026-02-23)
+
+
+### Bug Fixes
+
+* refactor agent restriction code ([a1d27fe](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/a1d27fe9110d1fef88d4f8813e9e4459b5ba566a))
+* update tests ([6ce046d](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/6ce046dbc4f9a35d6aeebf9259d41dc25c969dfe))
+
 ## [0.0.16](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.15...v0.0.16) (2026-02-22)
 
 
