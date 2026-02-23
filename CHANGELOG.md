@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.17...v0.1.0) (2026-02-23)
+
+
+### Features
+
+* add git worktree-based import pipeline with closing balance reconciliation ([ff3aa6a](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/ff3aa6af3a29ba676fcbe99416a10b0ba943d290))
+
 ## [0.0.17](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.16...v0.0.17) (2026-02-23)
 
 
