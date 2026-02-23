@@ -137,7 +137,7 @@ describe('import-statements', () => {
       const rulesPath = path.join(rulesDir, 'ubs.rules');
       fs.writeFileSync(rulesPath, `source ${csvPath}\nskip 1`);
 
-      const hledgerOutput = `2026-01-16 Kaeser, Joel
+      const hledgerOutput = `2026-01-16 Connor, John
     income:unknown                 CHF-95.25 = CHF4746.23
     assets:bank:ubs:checking        CHF95.25
 
@@ -172,7 +172,7 @@ describe('import-statements', () => {
       expect(unknowns).toHaveLength(2);
 
       expect(unknowns[0].date).toBe('2026-01-16');
-      expect(unknowns[0].description).toBe('Kaeser, Joel');
+      expect(unknowns[0].description).toBe('Connor, John');
       expect(unknowns[0].account).toBe('income:unknown');
 
       expect(unknowns[1].date).toBe('2026-01-30');
