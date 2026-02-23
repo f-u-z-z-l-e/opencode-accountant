@@ -2,6 +2,7 @@ import { tool } from '@opencode-ai/plugin';
 import { $ } from 'bun';
 import * as path from 'path';
 import * as fs from 'fs';
+import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import {
   loadPricesConfig,
   getDefaultBackfillDate,
@@ -109,12 +110,9 @@ export async function updatePricesCore(
   configLoader: (directory: string) => PricesConfig = loadPricesConfig
 ): Promise<string> {
   // Agent restriction
-  if (agent !== 'accountant') {
-    return JSON.stringify({
-      error: 'This tool is restricted to the accountant agent only.',
-      hint: "Use: Task(subagent_type='accountant', prompt='update prices')",
-      caller: agent || 'main assistant',
-    });
+  const restrictionError = checkAccountantAgent(agent, 'update prices');
+  if (restrictionError) {
+    return restrictionError;
   }
 
   // Load configuration

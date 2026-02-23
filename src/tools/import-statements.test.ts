@@ -57,7 +57,7 @@ describe('import-statements', () => {
 
       expect(parsed.success).toBe(false);
       expect(parsed.error).toContain('restricted to the accountant agent');
-      expect(parsed.error).toContain('other-agent');
+      expect(parsed.caller).toBe('other-agent');
     });
 
     it('should reject calls from main assistant', async () => {
@@ -65,7 +65,7 @@ describe('import-statements', () => {
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('main assistant');
+      expect(parsed.caller).toBe('main assistant');
     });
   });
 

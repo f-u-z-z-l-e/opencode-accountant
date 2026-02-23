@@ -1,6 +1,7 @@
 import { tool } from '@opencode-ai/plugin';
 import * as path from 'path';
 import * as fs from 'fs';
+import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
 import { detectProvider, type DetectionResult } from '../utils/providerDetector.ts';
 
@@ -78,15 +79,12 @@ export async function classifyStatementsCore(
   configLoader: (dir: string) => ImportConfig = loadImportConfig
 ): Promise<string> {
   // Agent restriction
-  if (agent !== 'accountant') {
-    return JSON.stringify({
-      success: false,
-      error: 'This tool is restricted to the accountant agent only.',
-      hint: "Use: Task(subagent_type='accountant', prompt='classify statements')",
-      caller: agent || 'main assistant',
-      classified: [],
-      unrecognized: [],
-    } satisfies ClassifyResult & { hint: string; caller: string });
+  const restrictionError = checkAccountantAgent(agent, 'classify statements', {
+    classified: [],
+    unrecognized: [],
+  });
+  if (restrictionError) {
+    return restrictionError;
   }
 
   // Load configuration

@@ -1,6 +1,7 @@
 import { tool } from '@opencode-ai/plugin';
 import * as fs from 'fs';
 import * as path from 'path';
+import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { type ImportConfig, loadImportConfig } from '../utils/importConfig.ts';
 import { findRulesForCsv, loadRulesMapping } from '../utils/rulesMatcher.ts';
 import {
@@ -153,12 +154,9 @@ export async function importStatementsCore(
   hledgerExecutor: HledgerExecutor = defaultHledgerExecutor
 ): Promise<string> {
   // Agent restriction
-  if (agent !== 'accountant') {
-    return JSON.stringify({
-      success: false,
-      error: `This tool is restricted to the accountant agent only. Called by: ${agent || 'main assistant'}`,
-      hint: "Use: Task(subagent_type='accountant', prompt='import statements')",
-    });
+  const restrictionError = checkAccountantAgent(agent, 'import statements');
+  if (restrictionError) {
+    return restrictionError;
   }
 
   // Load configuration
@@ -475,7 +473,7 @@ export async function importStatementsCore(
 }
 
 export default tool({
-  description: `Import classified bank statement CSVs into hledger using rules files.
+  description: `ACCOUNTANT AGENT ONLY: Import classified bank statement CSVs into hledger using rules files.
 
 This tool processes CSV files in the pending import directory and uses hledger's CSV import capabilities with matching rules files.
 
