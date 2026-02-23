@@ -193,26 +193,33 @@ your-project/
 
 #### Workflow
 
+The `import-pipeline` tool provides an atomic, safe import workflow using git worktrees:
+
 1. Drop CSV files into `{paths.import}` (default: `import/incoming/`)
-2. Run `classify-statements` tool
-3. Files are moved to `{paths.pending}/<provider>/<currency>/` (default: `import/pending/`)
-4. Unrecognized files are moved to `{paths.unrecognized}/` (default: `import/unrecognized/`)
-5. Run `import-statements` with `checkOnly: true` to validate transactions
-6. If unknown postings found: Add rules to the `.rules` file, repeat step 5
-7. Once all transactions match: Run `import-statements` with `checkOnly: false`
-8. Transactions are imported to journal, CSV files moved to `{paths.done}/<provider>/<currency>/` (default: `import/done/`)
+2. Run `import-pipeline` tool with optional provider/currency filters
+3. The tool automatically:
+   - Creates an isolated git worktree
+   - Classifies CSV files by provider/currency
+   - Validates all transactions have matching rules
+   - Imports transactions to the appropriate year journal
+   - Reconciles closing balance (if available in CSV metadata)
+   - Merges changes back to main branch with `--no-ff`
+   - Cleans up the worktree
+4. If any step fails, the worktree is discarded and main branch remains untouched
 
 ### Statement Import
 
-The `import-statements` tool imports classified CSV statements into hledger using rules files. It validates transactions before import and identifies any that cannot be categorized.
+The `import-pipeline` tool is the single entry point for importing bank statements. It orchestrates classification, validation, import, and reconciliation in an atomic operation.
 
 #### Tool Arguments
 
-| Argument    | Type    | Default | Description                                 |
-| ----------- | ------- | ------- | ------------------------------------------- |
-| `provider`  | string  | -       | Filter by provider (e.g., `revolut`, `ubs`) |
-| `currency`  | string  | -       | Filter by currency (e.g., `chf`, `eur`)     |
-| `checkOnly` | boolean | `true`  | If true, only validate without importing    |
+| Argument         | Type    | Default | Description                                            |
+| ---------------- | ------- | ------- | ------------------------------------------------------ |
+| `provider`       | string  | -       | Filter by provider (e.g., `revolut`, `ubs`)            |
+| `currency`       | string  | -       | Filter by currency (e.g., `chf`, `eur`)                |
+| `skipClassify`   | boolean | `false` | Skip classification step (if files already classified) |
+| `closingBalance` | string  | -       | Manual closing balance for reconciliation              |
+| `account`        | string  | -       | Manual account override (auto-detected from rules)     |
 
 #### Rules File Matching
 
@@ -230,9 +237,26 @@ See the hledger documentation for details on rules file format and syntax.
 
 #### Unknown Postings
 
-When a transaction doesn't match any `if` pattern in the rules file, hledger assigns it to `income:unknown` or `expenses:unknown` depending on the transaction direction. The tool reports these so you can add appropriate rules.
+When a transaction doesn't match any `if` pattern in the rules file, hledger assigns it to `income:unknown` or `expenses:unknown` depending on the transaction direction. The pipeline will fail at the validation step, reporting the unknown postings so you can add appropriate rules before retrying.
 
-For detailed output format examples, see [`docs/tools/import-statements.md`](docs/tools/import-statements.md).
+#### Closing Balance Reconciliation
+
+For providers that include closing balance in CSV metadata (e.g., UBS), the tool automatically validates that the imported transactions result in the correct balance. Configure metadata extraction in `providers.yaml`:
+
+```yaml
+metadata:
+  - field: closing_balance
+    row: 5
+    column: 1
+  - field: from_date
+    row: 2
+    column: 1
+  - field: until_date
+    row: 3
+    column: 1
+```
+
+For providers without closing balance in metadata (e.g., Revolut), provide it manually via the `closingBalance` argument.
 
 ## Development
 

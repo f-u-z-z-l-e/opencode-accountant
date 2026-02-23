@@ -8,7 +8,7 @@ tools:
   bash: true
   edit: true
   write: true
-  # MCP tools available: classify-statements, import-statements, update-prices
+  # MCP tools available: import-pipeline, update-prices
 permission:
   bash: allow
   edit: allow
@@ -56,11 +56,10 @@ When working with accounting tasks:
 
 You have access to specialized MCP tools that MUST be used for their designated tasks. Do NOT attempt to replicate their functionality with bash commands, direct hledger CLI calls, or manual file edits.
 
-| Tool                  | Use For                            | NEVER Do Instead                           |
-| --------------------- | ---------------------------------- | ------------------------------------------ |
-| `classify-statements` | Organizing incoming CSV files      | Manual file moves or bash `mv` commands    |
-| `import-statements`   | Importing transactions to journals | `hledger import`, manual journal edits     |
-| `update-prices`       | Fetching exchange rates            | `curl` to price APIs, manual price entries |
+| Tool              | Use For                                              | NEVER Do Instead                                          |
+| ----------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| `import-pipeline` | Full import workflow (classify → import → reconcile) | Manual file moves, `hledger import`, manual journal edits |
+| `update-prices`   | Fetching exchange rates                              | `curl` to price APIs, manual price entries                |
 
 These tools handle validation, deduplication, error checking, and file organization automatically. Bypassing them risks data corruption, duplicate transactions, and inconsistent state.
 
@@ -74,26 +73,31 @@ Bash is allowed ONLY for:
 
 Bash is FORBIDDEN for:
 
-- `hledger import` - use `import-statements` tool instead
-- Moving/copying CSV files - use `classify-statements` tool instead
+- `hledger import` - use `import-pipeline` tool instead
+- Moving/copying CSV files - use `import-pipeline` tool instead
 - Editing journal files directly - use `edit` tool only for rules files
 - Fetching prices - use `update-prices` tool instead
 
 ## Statement Import Workflow
 
-**IMPORTANT:** You MUST use the MCP tools below for statement imports. Do NOT edit journals manually, run `hledger import` directly, or move files with bash commands. The workflow:
+**IMPORTANT:** You MUST use `import-pipeline` for statement imports. Do NOT edit journals manually, run `hledger import` directly, or move files with bash commands.
+
+The `import-pipeline` tool provides an **atomic, safe workflow** using git worktrees:
 
 1. **Prepare**: Drop CSV files into `{paths.import}` (configured in `config/import/providers.yaml`, default: `import/incoming`)
-2. **Classify**: Run `classify-statements` tool to organize files by provider/currency
-   - Files moved to `{paths.pending}/<provider>/<currency>/`
-3. **Validate (check mode)**: Run `import-statements(checkOnly: true)` to validate transactions
-4. **Handle unknowns**: If unknown postings found:
-   - Tool returns full CSV row data for each unknown posting
-   - Analyze the CSV row data to understand the transaction
-   - Create or update rules file with `if` directives to match the transaction
-   - Repeat step 3 until all postings are matched
-5. **Import**: Once all transactions have matching rules, run `import-statements(checkOnly: false)`
-6. **Complete**: Transactions imported to journal, CSVs moved to `{paths.done}/<provider>/<currency>/`
+2. **Run Pipeline**: Execute `import-pipeline` (optionally filter by `provider` and `currency`)
+3. **Automatic Processing**: The tool creates an isolated git worktree and:
+   - Classifies CSV files by provider/currency
+   - Validates all transactions have matching rules
+   - Imports transactions to the appropriate year journal
+   - Reconciles closing balance (if available in CSV metadata)
+   - Merges changes back to main branch with `--no-ff`
+   - Cleans up the worktree
+4. **Handle Failures**: If any step fails (e.g., unknown postings found):
+   - Worktree is discarded, main branch remains untouched
+   - Review error output for unknown postings with full CSV row data
+   - Update rules file with `if` directives to match the transaction
+   - Re-run `import-pipeline`
 
 ### Rules Files
 
@@ -106,51 +110,51 @@ Bash is FORBIDDEN for:
 
 The following are MCP tools available to you. Always call these tools directly - do not attempt to replicate their behavior with shell commands.
 
-### classify-statements
+### import-pipeline
 
-**Purpose:** Organizes CSV files by auto-detecting provider and currency.
-
-**Usage:** `classify-statements()` (no arguments)
-
-**Behavior:**
-
-- Scans `{paths.import}` for CSV files
-- Detects provider using header matching + filename patterns
-- Moves classified files to `{paths.pending}/<provider>/<currency>/`
-- Moves unrecognized files to `{paths.unrecognized}/`
-- Aborts if any file collision detected (no partial moves)
-
-**Output:** Returns classified/unrecognized file lists with target paths
-
-**Common issues:**
-
-- Unrecognized files → Add provider config to `config/import/providers.yaml`
-- Collisions → Move/rename existing pending files before re-running
-
----
-
-### import-statements
-
-**Purpose:** Imports classified CSV transactions into hledger journals.
+**Purpose:** Atomic import workflow that classifies, validates, imports, and reconciles bank statements.
 
 **Usage:**
 
-- Check mode (default): `import-statements(checkOnly: true)` or `import-statements()`
-- Import mode: `import-statements(checkOnly: false)`
+- Basic: `import-pipeline()`
+- Filtered: `import-pipeline(provider: "ubs", currency: "chf")`
+- With manual closing balance: `import-pipeline(provider: "revolut", closingBalance: "CHF 1234.56")`
+- Skip classification: `import-pipeline(skipClassify: true)` (if files already classified)
+
+**Arguments:**
+
+| Argument         | Type    | Default | Description                                        |
+| ---------------- | ------- | ------- | -------------------------------------------------- |
+| `provider`       | string  | -       | Filter by provider (e.g., `revolut`, `ubs`)        |
+| `currency`       | string  | -       | Filter by currency (e.g., `chf`, `eur`)            |
+| `skipClassify`   | boolean | `false` | Skip classification step                           |
+| `closingBalance` | string  | -       | Manual closing balance for reconciliation          |
+| `account`        | string  | -       | Manual account override (auto-detected from rules) |
 
 **Behavior:**
 
-- Processes CSV files in `{paths.pending}/<provider>/<currency>/`
-- Matches each CSV to rules file via `source` directive
-- Check mode: Validates transactions, reports unknown postings with full CSV row data
-- Import mode: Only proceeds if ALL transactions have known accounts, moves CSVs to `{paths.done}/`
+1. Creates isolated git worktree
+2. Classifies CSV files (unless `skipClassify: true`)
+3. Validates all transactions have matching rules (dry run)
+4. Imports transactions to year journal
+5. Reconciles closing balance against CSV metadata or manual value
+6. Merges to main with `--no-ff` commit
+7. Cleans up worktree
 
-**Output:** Returns per-file results with transaction counts and unknown postings (if any)
+**Output:** Returns step-by-step results with success/failure for each phase
 
-**Required for import:**
+**On Failure:**
 
-- All transactions must have matching rules (no `income:unknown` or `expenses:unknown`)
-- Each CSV must have a corresponding `.rules` file in `{paths.rules}`
+- Worktree is discarded automatically
+- Main branch remains untouched
+- Error details include unknown postings with full CSV row data
+- Fix rules and re-run the pipeline
+
+**Common issues:**
+
+- Unknown postings → Add `if` directives to rules file
+- Unrecognized files → Add provider config to `config/import/providers.yaml`
+- Balance mismatch → Check for missing transactions or incorrect rules
 
 ---
 
