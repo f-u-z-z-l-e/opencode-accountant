@@ -15,6 +15,7 @@ import {
 } from '../utils/hledgerExecutor.ts';
 import { parseRulesFile } from '../utils/rulesParser.ts';
 import { findMatchingCsvRow, parseCsvFile } from '../utils/csvParser.ts';
+import { isInWorktree } from '../utils/worktreeManager.ts';
 
 /**
  * Result for single CSV file processing
@@ -151,12 +152,23 @@ export async function importStatementsCore(
   },
   // eslint-disable-next-line no-unused-vars
   configLoader: (configDir: string) => ImportConfig = loadImportConfig,
-  hledgerExecutor: HledgerExecutor = defaultHledgerExecutor
+  hledgerExecutor: HledgerExecutor = defaultHledgerExecutor,
+  // eslint-disable-next-line no-unused-vars
+  worktreeChecker: (dir: string) => boolean = isInWorktree
 ): Promise<string> {
   // Agent restriction
   const restrictionError = checkAccountantAgent(agent, 'import statements');
   if (restrictionError) {
     return restrictionError;
+  }
+
+  // Enforce worktree requirement
+  if (!worktreeChecker(directory)) {
+    return JSON.stringify({
+      success: false,
+      error: 'import-statements must be run inside an import worktree',
+      hint: 'Use import-pipeline tool to orchestrate the full workflow',
+    } satisfies Partial<ImportStatementsResult>);
   }
 
   // Load configuration
@@ -420,7 +432,6 @@ export async function importStatementsCore(
   }
 
   // Validate the ledger after all imports to ensure integrity
-  // This catches issues like balance assertion failures from misconfigured rules
   const mainJournalPath = path.join(directory, '.hledger.journal');
   const validationResult = await validateLedger(mainJournalPath, hledgerExecutor);
 
@@ -437,7 +448,7 @@ export async function importStatementsCore(
         unknown: totalUnknown,
       },
       error: `Ledger validation failed after import: ${validationResult.errors.join('; ')}`,
-      hint: 'The import created invalid transactions. Check your rules file configuration (e.g., balance vs balance2 for balance assertions). CSV files have NOT been moved to done.',
+      hint: 'The import created invalid transactions. Check your rules file configuration. CSV files have NOT been moved to done.',
     } satisfies ImportStatementsResult);
   }
 

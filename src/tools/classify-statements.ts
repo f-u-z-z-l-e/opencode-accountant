@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
 import { detectProvider, type DetectionResult } from '../utils/providerDetector.ts';
+import { isInWorktree } from '../utils/worktreeManager.ts';
 
 /**
  * Result for a single classified CSV file
@@ -41,6 +42,7 @@ interface ClassifyResult {
   unrecognized: UnrecognizedFile[];
   collisions?: FileCollision[];
   error?: string;
+  hint?: string;
 }
 
 /**
@@ -76,7 +78,9 @@ export async function classifyStatementsCore(
   directory: string,
   agent: string,
   // eslint-disable-next-line no-unused-vars
-  configLoader: (dir: string) => ImportConfig = loadImportConfig
+  configLoader: (dir: string) => ImportConfig = loadImportConfig,
+  // eslint-disable-next-line no-unused-vars
+  worktreeChecker: (dir: string) => boolean = isInWorktree
 ): Promise<string> {
   // Agent restriction
   const restrictionError = checkAccountantAgent(agent, 'classify statements', {
@@ -85,6 +89,17 @@ export async function classifyStatementsCore(
   });
   if (restrictionError) {
     return restrictionError;
+  }
+
+  // Enforce worktree requirement
+  if (!worktreeChecker(directory)) {
+    return JSON.stringify({
+      success: false,
+      error: 'classify-statements must be run inside an import worktree',
+      hint: 'Use import-pipeline tool to orchestrate the full workflow',
+      classified: [],
+      unrecognized: [],
+    } satisfies ClassifyResult);
   }
 
   // Load configuration

@@ -133,6 +133,16 @@ export function parseAmountFields(rulesContent: string, fieldNames: string[]): A
 }
 
 /**
+ * Parse the 'account1' directive from rules file.
+ * This is the primary account (bank/asset account) for the CSV import.
+ * Example: "account1 assets:bank:ubs:checking" returns "assets:bank:ubs:checking"
+ */
+export function parseAccount1(rulesContent: string): string | null {
+  const match = rulesContent.match(/^account1\s+(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
+/**
  * Parse all relevant directives from a rules file.
  */
 export function parseRulesFile(rulesContent: string): RulesConfig {

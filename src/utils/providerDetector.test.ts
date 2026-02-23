@@ -9,6 +9,7 @@ describe('providerDetector', () => {
       pending: 'doc/agent/todo/import',
       done: 'doc/agent/done/import',
       unrecognized: 'statements/import/unrecognized',
+      rules: 'config/import/rules',
     },
     providers: {
       revolut: {
@@ -288,6 +289,65 @@ Deposit,Current,2023-06-12 10:00:00,2023-06-12 10:00:00,Initial deposit,1000.00,
       expect(result!.metadata).toBeUndefined();
     });
 
+    it('should extract multiple metadata fields including balance info (UBS-style)', () => {
+      const configWithBalanceMetadata: ImportConfig = {
+        ...mockConfig,
+        providers: {
+          ubsbank: {
+            detect: [
+              {
+                header: 'Date,Description,Amount,Currency',
+                currencyField: 'Currency',
+                skipRows: 8,
+                delimiter: ';',
+                renamePattern: 'ubs-{account_number}-{from_date}-{until_date}.csv',
+                metadata: [
+                  { field: 'account_number', row: 0, column: 1, normalize: 'spaces-to-dashes' },
+                  { field: 'iban', row: 1, column: 1 },
+                  { field: 'from_date', row: 2, column: 1 },
+                  { field: 'until_date', row: 3, column: 1 },
+                  { field: 'opening_balance', row: 4, column: 1 },
+                  { field: 'closing_balance', row: 5, column: 1 },
+                  { field: 'currency', row: 6, column: 1 },
+                ],
+              },
+            ],
+            currencies: {
+              CHF: 'chf',
+            },
+          },
+        },
+      };
+
+      const filename = 'export.csv';
+      const content = `Account number:;1234 56789012.3;
+IBAN:;CH93 0076 2011 6238 5295 7;
+From:;2026-01-05;
+Until:;2026-01-31;
+Opening balance:;1632.63;
+Closing balance:;2324.79;
+Valued in:;CHF;
+Numbers of transactions in this period:;24;
+Date;Description;Amount;Currency
+2026-01-15;Test payment;-100.00;CHF`;
+
+      const result = detectProvider(filename, content, configWithBalanceMetadata);
+
+      expect(result).not.toBeNull();
+      expect(result!.provider).toBe('ubsbank');
+      expect(result!.currency).toBe('chf');
+      expect(result!.metadata).toEqual({
+        account_number: '1234-56789012.3',
+        iban: 'CH93 0076 2011 6238 5295 7',
+        from_date: '2026-01-05',
+        until_date: '2026-01-31',
+        opening_balance: '1632.63',
+        closing_balance: '2324.79',
+        currency: 'CHF',
+      });
+      expect(result!.outputFilename).toBe('ubs-1234-56789012.3-2026-01-05-2026-01-31.csv');
+    });
+
     it('should fail to match when CSV header has trailing delimiter (creates empty field)', () => {
       const configWithoutTrailingField: ImportConfig = {
         paths: {
@@ -295,6 +355,7 @@ Deposit,Current,2023-06-12 10:00:00,2023-06-12 10:00:00,Initial deposit,1000.00,
           pending: 'doc/agent/todo/import',
           done: 'doc/agent/done/import',
           unrecognized: 'statements/import/unrecognized',
+          rules: 'config/import/rules',
         },
         providers: {
           testbank: {
@@ -332,6 +393,7 @@ Deposit,Current,2023-06-12 10:00:00,2023-06-12 10:00:00,Initial deposit,1000.00,
           pending: 'doc/agent/todo/import',
           done: 'doc/agent/done/import',
           unrecognized: 'statements/import/unrecognized',
+          rules: 'config/import/rules',
         },
         providers: {
           testbank: {
