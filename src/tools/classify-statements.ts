@@ -91,6 +91,17 @@ function buildErrorResult(error: string, hint?: string): string {
   } satisfies ClassifyResult);
 }
 
+function buildCollisionError(collisions: FileCollision[]): string {
+  const error = `Cannot classify: ${collisions.length} file(s) would overwrite existing pending files.`;
+  return JSON.stringify({
+    success: false,
+    error,
+    collisions,
+    classified: [],
+    unrecognized: [],
+  } satisfies ClassifyResult);
+}
+
 /**
  * First pass: detect all files and check for collisions (no file operations)
  */
@@ -241,14 +252,7 @@ export async function classifyStatementsCore(
 
   // Abort if any collisions detected
   if (collisions.length > 0) {
-    const errorMessage = `Cannot classify: ${collisions.length} file(s) would overwrite existing pending files.`;
-    return JSON.stringify({
-      success: false,
-      error: errorMessage,
-      collisions,
-      classified: [],
-      unrecognized: [],
-    } satisfies ClassifyResult);
+    return buildCollisionError(collisions);
   }
 
   // Second pass: execute all moves
