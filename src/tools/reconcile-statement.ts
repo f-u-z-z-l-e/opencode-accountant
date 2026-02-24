@@ -1,3 +1,4 @@
+import { tool } from '@opencode-ai/plugin';
 import * as fs from 'fs';
 import * as path from 'path';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
@@ -426,3 +427,51 @@ export async function reconcileStatementCore(
     metadata,
   } satisfies ReconcileResult);
 }
+
+export default tool({
+  description: `ACCOUNTANT AGENT ONLY: Reconcile imported bank statement against closing balance.
+
+This tool validates that the imported transactions result in the correct closing balance.
+It must be run inside an import worktree (use import-pipeline for the full workflow).
+
+**Workflow:**
+1. Finds the most recently imported CSV in the done directory
+2. Extracts closing balance from CSV metadata (or uses manual override)
+3. Determines the account from the matching rules file (or uses manual override)
+4. Queries hledger for the actual balance as of the last transaction date
+5. Compares expected vs actual balance
+
+**Balance Sources:**
+- Automatic: Extracted from CSV header metadata (e.g., UBS files have "Closing balance:" row)
+- Manual: Provided via closingBalance parameter (required for providers like Revolut)
+
+**Account Detection:**
+- Automatic: Parsed from account1 directive in matching rules file
+- Manual: Provided via account parameter`,
+  args: {
+    provider: tool.schema
+      .string()
+      .optional()
+      .describe('Filter by provider (e.g., "ubs", "revolut")'),
+    currency: tool.schema.string().optional().describe('Filter by currency (e.g., "chf", "eur")'),
+    closingBalance: tool.schema
+      .string()
+      .optional()
+      .describe('Manual closing balance (e.g., "CHF 2324.79"). Required if not in CSV metadata.'),
+    account: tool.schema
+      .string()
+      .optional()
+      .describe(
+        'Manual account (e.g., "assets:bank:ubs:checking"). Auto-detected from rules file if not provided.'
+      ),
+  },
+  async execute(params, context) {
+    const { directory, agent } = context;
+    return reconcileStatementCore(directory, agent, {
+      provider: params.provider,
+      currency: params.currency,
+      closingBalance: params.closingBalance,
+      account: params.account,
+    });
+  },
+});

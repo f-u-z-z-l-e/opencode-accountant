@@ -1,3 +1,4 @@
+import { tool } from '@opencode-ai/plugin';
 import * as path from 'path';
 import * as fs from 'fs';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
@@ -232,3 +233,13 @@ export async function classifyStatementsCore(
     },
   });
 }
+
+export default tool({
+  description:
+    'ACCOUNTANT AGENT ONLY: Classifies bank statement CSV files from the imports directory by detecting their provider and currency, then moves them to the appropriate pending import directories.',
+  args: {},
+  async execute(_params, context) {
+    const { directory, agent } = context;
+    return classifyStatementsCore(directory, agent);
+  },
+});
