@@ -3,6 +3,8 @@
  * Extracts directives like skip, separator, fields, date-format, and amount patterns.
  */
 
+import * as fs from 'fs';
+
 export interface RulesConfig {
   skipRows: number;
   separator: string;
@@ -140,6 +142,22 @@ export function parseAmountFields(rulesContent: string, fieldNames: string[]): A
 export function parseAccount1(rulesContent: string): string | null {
   const match = rulesContent.match(/^account1\s+(.+)$/m);
   return match ? match[1].trim() : null;
+}
+
+/**
+ * Read and parse account1 directive from a rules file.
+ * Convenience function that reads the file and extracts the account.
+ *
+ * @param rulesFilePath - Path to the rules file
+ * @returns The account1 value, or null if not found or file cannot be read
+ */
+export function getAccountFromRulesFile(rulesFilePath: string): string | null {
+  try {
+    const content = fs.readFileSync(rulesFilePath, 'utf-8');
+    return parseAccount1(content);
+  } catch {
+    return null;
+  }
 }
 
 /**

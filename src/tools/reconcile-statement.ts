@@ -4,7 +4,7 @@ import * as path from 'path';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { type ImportConfig, loadImportConfig } from '../utils/importConfig.ts';
 import { findRulesForCsv, loadRulesMapping } from '../utils/rulesMatcher.ts';
-import { parseAccount1 } from '../utils/rulesParser.ts';
+import { getAccountFromRulesFile } from '../utils/rulesParser.ts';
 import { isInWorktree } from '../utils/worktreeManager.ts';
 import { detectProvider } from '../utils/providerDetector.ts';
 import {
@@ -59,37 +59,193 @@ interface ReconcileResult {
 }
 
 /**
- * Extracts metadata from a CSV file using provider detection
+ * Build an error result for the reconcile-statement tool
  */
-function extractCsvMetadata(csvFilePath: string, config: ImportConfig): CsvMetadata | null {
-  try {
-    const content = fs.readFileSync(csvFilePath, 'utf-8');
-    const filename = path.basename(csvFilePath);
-    const result = detectProvider(filename, content, config);
+function buildErrorResult(params: {
+  csvFile?: string;
+  account?: string;
+  lastTransactionDate?: string;
+  expectedBalance?: string;
+  actualBalance?: string;
+  difference?: string;
+  metadata?: CsvMetadata;
+  error: string;
+  hint?: string;
+}): string {
+  return JSON.stringify({
+    success: false,
+    ...params,
+  } satisfies Partial<ReconcileResult>);
+}
 
-    if (result && result.metadata) {
-      return result.metadata as CsvMetadata;
-    }
-    return null;
-  } catch {
-    return null;
+/**
+ * Build a success result for the reconcile-statement tool
+ */
+function buildSuccessResult(params: {
+  csvFile: string;
+  account: string;
+  lastTransactionDate: string;
+  expectedBalance: string;
+  actualBalance: string;
+  metadata?: CsvMetadata;
+}): string {
+  return JSON.stringify({
+    success: true,
+    ...params,
+  } satisfies ReconcileResult);
+}
+
+/**
+ * Validate that the directory is an import worktree
+ */
+function validateWorktree(
+  directory: string,
+  // eslint-disable-next-line no-unused-vars
+  worktreeChecker: (dir: string) => boolean
+): string | null {
+  if (!worktreeChecker(directory)) {
+    return buildErrorResult({
+      error: 'reconcile-statement must be run inside an import worktree',
+      hint: 'Use import-pipeline tool to orchestrate the full workflow',
+    });
+  }
+  return null;
+}
+
+/**
+ * Load import configuration
+ */
+function loadConfiguration(
+  directory: string,
+  // eslint-disable-next-line no-unused-vars
+  configLoader: (configDir: string) => ImportConfig
+): { config: ImportConfig } | { error: string } {
+  try {
+    const config = configLoader(directory);
+    return { config };
+  } catch (error) {
+    return {
+      error: buildErrorResult({
+        error: `Failed to load configuration: ${error instanceof Error ? error.message : String(error)}`,
+        hint: 'Ensure config/import/providers.yaml exists',
+      }),
+    };
   }
 }
 
 /**
- * Extracts account1 from a rules file
+ * Find CSV file to reconcile
  */
-function getAccountFromRulesFile(rulesFilePath: string): string | null {
-  try {
-    const content = fs.readFileSync(rulesFilePath, 'utf-8');
-    return parseAccount1(content);
-  } catch {
-    return null;
+function findCsvToReconcile(
+  doneDir: string,
+  options: ReconcileStatementsArgs
+): { csvFile: string; relativePath: string } | { error: string } {
+  const csvFiles = findCsvFiles(doneDir, options.provider, options.currency);
+
+  if (csvFiles.length === 0) {
+    return {
+      error: buildErrorResult({
+        error: 'No CSV files found in done directory to reconcile',
+        hint: 'Run import-statements first to import CSV files',
+      }),
+    };
   }
+
+  const csvFile = csvFiles[csvFiles.length - 1];
+  const relativePath = path.relative(path.dirname(path.dirname(doneDir)), csvFile);
+
+  return { csvFile, relativePath };
+}
+
+/**
+ * Determine closing balance from CSV metadata or manual override
+ */
+function determineClosingBalance(
+  csvFile: string,
+  config: ImportConfig,
+  options: ReconcileStatementsArgs,
+  relativeCsvPath: string
+): { closingBalance: string; metadata?: CsvMetadata } | { error: string } {
+  // Extract metadata from CSV
+  let metadata: CsvMetadata | undefined;
+  try {
+    const content = fs.readFileSync(csvFile, 'utf-8');
+    const filename = path.basename(csvFile);
+    const detectionResult = detectProvider(filename, content, config);
+    metadata = detectionResult?.metadata as CsvMetadata | undefined;
+  } catch {
+    metadata = undefined;
+  }
+
+  let closingBalance = options.closingBalance;
+
+  if (!closingBalance && metadata?.closing_balance) {
+    closingBalance = metadata.closing_balance;
+    // Add currency if not present and metadata has it
+    if (metadata.currency && !closingBalance.includes(metadata.currency)) {
+      closingBalance = `${metadata.currency} ${closingBalance}`;
+    }
+  }
+
+  if (!closingBalance) {
+    return {
+      error: buildErrorResult({
+        csvFile: relativeCsvPath,
+        error: 'No closing balance found in CSV metadata',
+        hint: 'Provide closingBalance parameter manually',
+        metadata,
+      }),
+    };
+  }
+
+  return { closingBalance, metadata };
+}
+
+/**
+ * Determine account from rules file or manual override
+ */
+function determineAccount(
+  csvFile: string,
+  rulesDir: string,
+  options: ReconcileStatementsArgs,
+  relativeCsvPath: string,
+  metadata?: CsvMetadata
+): { account: string } | { error: string } {
+  let account = options.account;
+
+  if (!account) {
+    const rulesMapping = loadRulesMapping(rulesDir);
+    const rulesFile = findRulesForCsv(csvFile, rulesMapping);
+
+    if (rulesFile) {
+      account = getAccountFromRulesFile(rulesFile) ?? undefined;
+    }
+  }
+
+  if (!account) {
+    return {
+      error: buildErrorResult({
+        csvFile: relativeCsvPath,
+        error: 'Could not determine account from rules file',
+        hint: 'Provide account parameter manually or ensure rules file has account1 directive',
+        metadata,
+      }),
+    };
+  }
+
+  return { account };
 }
 
 /**
  * Core implementation of the reconcile-statement tool
+ *
+ * This function performs the following steps:
+ * 1. Validates the directory is an import worktree
+ * 2. Finds the most recently imported CSV file
+ * 3. Determines the expected closing balance (from CSV or manual override)
+ * 4. Determines the account (from rules file or manual override)
+ * 5. Queries hledger for the actual balance as of the last transaction
+ * 6. Compares expected vs actual balance
  */
 export async function reconcileStatementCore(
   directory: string,
@@ -101,99 +257,51 @@ export async function reconcileStatementCore(
   // eslint-disable-next-line no-unused-vars
   worktreeChecker: (dir: string) => boolean = isInWorktree
 ): Promise<string> {
-  // Agent restriction
+  // 1. Agent restriction
   const restrictionError = checkAccountantAgent(agent, 'reconcile statement');
   if (restrictionError) {
     return restrictionError;
   }
 
-  // Enforce worktree requirement
-  if (!worktreeChecker(directory)) {
-    return JSON.stringify({
-      success: false,
-      error: 'reconcile-statement must be run inside an import worktree',
-      hint: 'Use import-pipeline tool to orchestrate the full workflow',
-    } satisfies Partial<ReconcileResult>);
+  // 2. Validate worktree
+  const worktreeError = validateWorktree(directory, worktreeChecker);
+  if (worktreeError) {
+    return worktreeError;
   }
 
-  // Load configuration
-  let config: ImportConfig;
-  try {
-    config = configLoader(directory);
-  } catch (error) {
-    return JSON.stringify({
-      success: false,
-      error: `Failed to load configuration: ${error instanceof Error ? error.message : String(error)}`,
-      hint: 'Ensure config/import/providers.yaml exists',
-    } satisfies Partial<ReconcileResult>);
+  // 3. Load configuration
+  const configResult = loadConfiguration(directory, configLoader);
+  if ('error' in configResult) {
+    return configResult.error;
   }
+  const { config } = configResult;
 
   const doneDir = path.join(directory, config.paths.done);
   const rulesDir = path.join(directory, config.paths.rules);
   const mainJournalPath = path.join(directory, '.hledger.journal');
 
-  // Find CSV files in done directory
-  const csvFiles = findCsvFiles(doneDir, options.provider, options.currency);
-
-  if (csvFiles.length === 0) {
-    return JSON.stringify({
-      success: false,
-      error: 'No CSV files found in done directory to reconcile',
-      hint: 'Run import-statements first to import CSV files',
-    } satisfies Partial<ReconcileResult>);
+  // 4. Find CSV file
+  const csvResult = findCsvToReconcile(doneDir, options);
+  if ('error' in csvResult) {
+    return csvResult.error;
   }
+  const { csvFile, relativePath: relativeCsvPath } = csvResult;
 
-  // For now, reconcile the most recently modified CSV file
-  // In the future, we could support reconciling multiple files
-  const csvFile = csvFiles[csvFiles.length - 1];
-  const relativeCsvPath = path.relative(directory, csvFile);
-
-  // Extract metadata from CSV
-  const metadata = extractCsvMetadata(csvFile, config) ?? undefined;
-
-  // Determine closing balance
-  let closingBalance = options.closingBalance;
-  if (!closingBalance && metadata?.closing_balance) {
-    closingBalance = metadata.closing_balance;
-    // Add currency if not present and metadata has it
-    if (metadata.currency && !closingBalance.includes(metadata.currency)) {
-      closingBalance = `${metadata.currency} ${closingBalance}`;
-    }
+  // 5. Determine closing balance
+  const balanceResult = determineClosingBalance(csvFile, config, options, relativeCsvPath);
+  if ('error' in balanceResult) {
+    return balanceResult.error;
   }
+  const { closingBalance, metadata } = balanceResult;
 
-  if (!closingBalance) {
-    return JSON.stringify({
-      success: false,
-      csvFile: relativeCsvPath,
-      error: 'No closing balance found in CSV metadata',
-      hint: 'Provide closingBalance parameter manually',
-      metadata,
-    } satisfies Partial<ReconcileResult>);
+  // 6. Determine account
+  const accountResult = determineAccount(csvFile, rulesDir, options, relativeCsvPath, metadata);
+  if ('error' in accountResult) {
+    return accountResult.error;
   }
+  const { account } = accountResult;
 
-  // Determine account from rules file
-  let account = options.account;
-  if (!account) {
-    // Find matching rules file
-    const rulesMapping = loadRulesMapping(rulesDir);
-    const rulesFile = findRulesForCsv(csvFile, rulesMapping);
-
-    if (rulesFile) {
-      account = getAccountFromRulesFile(rulesFile) ?? undefined;
-    }
-  }
-
-  if (!account) {
-    return JSON.stringify({
-      success: false,
-      csvFile: relativeCsvPath,
-      error: 'Could not determine account from rules file',
-      hint: 'Provide account parameter manually or ensure rules file has account1 directive',
-      metadata: metadata ?? undefined,
-    } satisfies Partial<ReconcileResult>);
-  }
-
-  // Get the last transaction date
+  // 7. Get last transaction date
   const lastTransactionDate = await getLastTransactionDate(
     mainJournalPath,
     account,
@@ -201,17 +309,16 @@ export async function reconcileStatementCore(
   );
 
   if (!lastTransactionDate) {
-    return JSON.stringify({
-      success: false,
+    return buildErrorResult({
       csvFile: relativeCsvPath,
       account,
       error: 'No transactions found for account',
       hint: 'Ensure import completed successfully',
       metadata,
-    } satisfies Partial<ReconcileResult>);
+    });
   }
 
-  // Get the actual balance from hledger
+  // 8. Get actual balance
   const actualBalance = await getAccountBalance(
     mainJournalPath,
     account,
@@ -220,23 +327,21 @@ export async function reconcileStatementCore(
   );
 
   if (actualBalance === null) {
-    return JSON.stringify({
-      success: false,
+    return buildErrorResult({
       csvFile: relativeCsvPath,
       account,
       lastTransactionDate,
       error: 'Failed to query account balance from hledger',
       metadata,
-    } satisfies Partial<ReconcileResult>);
+    });
   }
 
-  // Compare balances
+  // 9. Compare balances
   let doBalancesMatch: boolean;
   try {
     doBalancesMatch = balancesMatch(closingBalance, actualBalance);
   } catch (error) {
-    return JSON.stringify({
-      success: false,
+    return buildErrorResult({
       csvFile: relativeCsvPath,
       account,
       lastTransactionDate,
@@ -244,28 +349,26 @@ export async function reconcileStatementCore(
       actualBalance,
       error: `Cannot parse balances for comparison: ${error instanceof Error ? error.message : String(error)}`,
       metadata,
-    } satisfies Partial<ReconcileResult>);
+    });
   }
 
   if (doBalancesMatch) {
-    return JSON.stringify({
-      success: true,
+    return buildSuccessResult({
       csvFile: relativeCsvPath,
       account,
       lastTransactionDate,
       expectedBalance: closingBalance,
       actualBalance,
       metadata,
-    } satisfies ReconcileResult);
+    });
   }
 
-  // Balances don't match
+  // 10. Balance mismatch
   let difference: string;
   try {
     difference = calculateDifference(closingBalance, actualBalance);
   } catch (error) {
-    return JSON.stringify({
-      success: false,
+    return buildErrorResult({
       csvFile: relativeCsvPath,
       account,
       lastTransactionDate,
@@ -273,11 +376,10 @@ export async function reconcileStatementCore(
       actualBalance,
       error: `Failed to calculate difference: ${error instanceof Error ? error.message : String(error)}`,
       metadata,
-    } satisfies Partial<ReconcileResult>);
+    });
   }
 
-  return JSON.stringify({
-    success: false,
+  return buildErrorResult({
     csvFile: relativeCsvPath,
     account,
     lastTransactionDate,
@@ -287,7 +389,7 @@ export async function reconcileStatementCore(
     error: `Balance mismatch: expected ${closingBalance}, got ${actualBalance} (difference: ${difference})`,
     hint: 'Check for missing transactions, duplicate imports, or incorrect rules',
     metadata,
-  } satisfies ReconcileResult);
+  });
 }
 
 export default tool({
