@@ -16,6 +16,28 @@ import {
 export type PriceFetcher = (args: string[]) => Promise<string>;
 
 /**
+ * Successful price fetch result
+ */
+export type PriceSuccess = {
+  ticker: string;
+  priceLine: string;
+  file: string;
+};
+
+/**
+ * Failed price fetch result
+ */
+export type PriceError = {
+  ticker: string;
+  error: string;
+};
+
+/**
+ * Result of fetching a single currency price
+ */
+export type PriceResult = PriceSuccess | PriceError;
+
+/**
  * Executes pricehist command using Bun's shell
  */
 export async function defaultPriceFetcher(cmdArgs: string[]): Promise<string> {
@@ -33,10 +55,61 @@ function getYesterday(): string {
   return d.toISOString().split('T')[0];
 }
 
+/**
+ * Extracts date from a price line (second field)
+ */
+function extractDateFromPriceLine(line: string): string | undefined {
+  return line.split(' ')[1];
+}
+
+/**
+ * Builds pricehist command arguments
+ */
+function buildPricehistArgs(
+  startDate: string,
+  endDate: string,
+  currencyConfig: { source: string; pair: string; fmt_base?: string }
+): string[] {
+  const cmdArgs = [
+    'fetch',
+    '-o',
+    'ledger',
+    '-s',
+    startDate,
+    '-e',
+    endDate,
+    currencyConfig.source,
+    currencyConfig.pair,
+  ];
+  if (currencyConfig.fmt_base) {
+    cmdArgs.push('--fmt-base', currencyConfig.fmt_base);
+  }
+  return cmdArgs;
+}
+
+/**
+ * Builds error result JSON
+ */
+function buildErrorResult(error: string): string {
+  return JSON.stringify({ error });
+}
+
+/**
+ * Builds success result JSON
+ */
+function buildSuccessResult(results: PriceResult[], endDate: string, backfill: boolean): string {
+  return JSON.stringify({
+    success: results.every((r) => !('error' in r)),
+    endDate,
+    backfill,
+    results,
+  });
+}
+
 // Parse a price line and extract date for filtering (keeps original line intact)
 // Input: "P 2025-02-17 00:00:00 EUR 0.944 CHF"
 // Output: { date: "2025-02-17", formattedLine: "P 2025-02-17 00:00:00 EUR 0.944 CHF" }
-export function parsePriceLine(line: string): { date: string; formattedLine: string } | null {
+function parsePriceLine(line: string): { date: string; formattedLine: string } | null {
   const match = line.match(/^P (\d{4}-\d{2}-\d{2})(?: \d{2}:\d{2}:\d{2})? .+$/);
   if (!match) return null;
   return {
@@ -81,13 +154,13 @@ function updateJournalWithPrices(journalPath: string, newPriceLines: string[]): 
 
   // Add existing lines to map
   for (const line of existingLines) {
-    const date = line.split(' ')[1];
+    const date = extractDateFromPriceLine(line);
     if (date) priceMap.set(date, line);
   }
 
   // Add/override with new price lines
   for (const line of newPriceLines) {
-    const date = line.split(' ')[1];
+    const date = extractDateFromPriceLine(line);
     if (date) priceMap.set(date, line);
   }
 
@@ -100,8 +173,10 @@ function updateJournalWithPrices(journalPath: string, newPriceLines: string[]): 
   fs.writeFileSync(journalPath, sortedLines.join('\n') + '\n');
 }
 
-// Exported core logic for testing
-export async function updatePricesCore(
+/**
+ * Updates price data for all configured currencies
+ */
+export async function updatePrices(
   directory: string,
   agent: string,
   backfill: boolean,
@@ -120,16 +195,13 @@ export async function updatePricesCore(
   try {
     config = configLoader(directory);
   } catch (err) {
-    return JSON.stringify({
-      error: err instanceof Error ? err.message : String(err),
-    });
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return buildErrorResult(errorMessage);
   }
 
   const endDate = getYesterday();
   const defaultBackfillDate = getDefaultBackfillDate();
-  const results: Array<
-    { ticker: string; priceLine: string; file: string } | { ticker: string; error: string }
-  > = [];
+  const results: PriceResult[] = [];
 
   for (const [ticker, currencyConfig] of Object.entries(config.currencies)) {
     try {
@@ -137,20 +209,7 @@ export async function updatePricesCore(
       const startDate = backfill ? currencyConfig.backfill_date || defaultBackfillDate : endDate;
 
       // Build pricehist command arguments
-      const cmdArgs = [
-        'fetch',
-        '-o',
-        'ledger',
-        '-s',
-        startDate,
-        '-e',
-        endDate,
-        currencyConfig.source,
-        currencyConfig.pair,
-      ];
-      if (currencyConfig.fmt_base) {
-        cmdArgs.push('--fmt-base', currencyConfig.fmt_base);
-      }
+      const cmdArgs = buildPricehistArgs(startDate, endDate, currencyConfig);
 
       // Execute pricehist using the injected fetcher
       const output = await priceFetcher(cmdArgs);
@@ -196,12 +255,7 @@ export async function updatePricesCore(
     }
   }
 
-  return JSON.stringify({
-    success: results.every((r) => !('error' in r)),
-    endDate,
-    backfill: backfill,
-    results,
-  });
+  return buildSuccessResult(results, endDate, backfill);
 }
 
 export default tool({
@@ -218,6 +272,6 @@ export default tool({
   async execute(params, context) {
     const { directory, agent } = context;
     const { backfill } = params;
-    return updatePricesCore(directory, agent, backfill || false);
+    return updatePrices(directory, agent, backfill || false);
   },
 });
