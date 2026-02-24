@@ -245,6 +245,7 @@ export async function reconcileStatementCore(
   directory: string,
   agent: string,
   options: ReconcileStatementsArgs,
+  // eslint-disable-next-line no-unused-vars
   configLoader: (configDir: string) => ImportConfig = loadImportConfig,
   hledgerExecutor: HledgerExecutor = defaultHledgerExecutor,
   // eslint-disable-next-line no-unused-vars

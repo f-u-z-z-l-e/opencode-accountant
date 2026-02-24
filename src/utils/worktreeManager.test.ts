@@ -185,7 +185,7 @@ describe('worktreeManager', () => {
       fs.writeFileSync(path.join(context.path, 'uncommitted.txt'), 'Uncommitted\n');
 
       // Normal remove should fail
-      const normalResult = removeWorktree(context, false);
+      removeWorktree(context, false);
       // This might succeed or fail depending on git version, so just test force
 
       // Force remove should succeed

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { reconcileStatementCore } from './reconcile-statement.ts';
 import type { HledgerExecutor } from '../utils/hledgerExecutor.ts';
 import type { ImportConfig } from '../utils/importConfig.ts';
