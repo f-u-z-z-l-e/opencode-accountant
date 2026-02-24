@@ -1,5 +1,6 @@
 import { $ } from 'bun';
 import type { CsvRowData } from './csvParser.ts';
+import { getNextDay } from './dateUtils.ts';
 
 /**
  * Result of executing an hledger command
@@ -179,4 +180,93 @@ export async function validateLedger(
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Gets the last transaction date for an account using hledger.
+ * Queries the register for the account and extracts the date from the last transaction.
+ *
+ * @param mainJournalPath Path to the main .hledger.journal file
+ * @param account Account to query (e.g., "assets:bank:ubs:checking")
+ * @param executor Optional hledger executor (for testing)
+ * @returns The last transaction date in YYYY-MM-DD format, or null if no transactions found
+ *
+ * @example
+ * const lastDate = await getLastTransactionDate('/path/to/.hledger.journal', 'assets:bank:ubs:checking');
+ * // Returns: "2026-01-31" or null
+ */
+export async function getLastTransactionDate(
+  mainJournalPath: string,
+  account: string,
+  executor: HledgerExecutor = defaultHledgerExecutor
+): Promise<string | null> {
+  // Use hledger register to get all transactions for the account in CSV format
+  const result = await executor(['register', account, '-f', mainJournalPath, '-O', 'csv']);
+
+  if (result.exitCode !== 0 || !result.stdout.trim()) {
+    return null;
+  }
+
+  // Parse CSV output to get the last date
+  const lines = result.stdout.trim().split('\n');
+  if (lines.length < 2) {
+    return null; // Only header, no transactions
+  }
+
+  // Get the last line (most recent transaction)
+  const lastLine = lines[lines.length - 1];
+  // CSV format: "txnidx","date","code","description","account","amount","total"
+  const match = lastLine.match(/^"?\d+"?,"?(\d{4}-\d{2}-\d{2})"?/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Gets the balance for an account as of a specific date using hledger.
+ * Uses hledger bal command with an exclusive end date.
+ *
+ * @param mainJournalPath Path to the main .hledger.journal file
+ * @param account Account to query (e.g., "assets:bank:ubs:checking")
+ * @param asOfDate Date to query balance as of (YYYY-MM-DD format)
+ * @param executor Optional hledger executor (for testing)
+ * @returns The account balance string (e.g., "CHF 2324.79"), or null if query fails
+ *
+ * @example
+ * const balance = await getAccountBalance('/path/to/.hledger.journal', 'assets:bank:ubs:checking', '2026-01-31');
+ * // Returns: "CHF 2324.79" or null
+ */
+export async function getAccountBalance(
+  mainJournalPath: string,
+  account: string,
+  asOfDate: string,
+  executor: HledgerExecutor = defaultHledgerExecutor
+): Promise<string | null> {
+  // Use hledger balance with end date (exclusive, so add 1 day)
+  // -e flag is exclusive, so we need to use the day after
+  const nextDay = getNextDay(asOfDate);
+
+  const result = await executor([
+    'bal',
+    account,
+    '-f',
+    mainJournalPath,
+    '-e',
+    nextDay,
+    '-N', // No total row
+    '--flat',
+  ]);
+
+  if (result.exitCode !== 0) {
+    return null;
+  }
+
+  // Parse balance output
+  // Format: "                CHF 2324.79  assets:bank:ubs:checking"
+  const output = result.stdout.trim();
+  if (!output) {
+    return '0';
+  }
+
+  // Extract the balance value (everything before the account name)
+  const match = output.match(/^\s*(.+?)\s{2,}/);
+  return match ? match[1].trim() : output.trim();
 }

@@ -7,9 +7,13 @@ import { findRulesForCsv, loadRulesMapping } from '../utils/rulesMatcher.ts';
 import { parseAccount1 } from '../utils/rulesParser.ts';
 import { isInWorktree } from '../utils/worktreeManager.ts';
 import { detectProvider } from '../utils/providerDetector.ts';
-import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
+import {
+  defaultHledgerExecutor,
+  type HledgerExecutor,
+  getLastTransactionDate,
+  getAccountBalance,
+} from '../utils/hledgerExecutor.ts';
 import { findCsvFiles } from '../utils/journalUtils.ts';
-import { getNextDay } from '../utils/dateUtils.ts';
 import { calculateDifference, balancesMatch } from '../utils/balanceUtils.ts';
 
 /**
@@ -82,74 +86,6 @@ function getAccountFromRulesFile(rulesFilePath: string): string | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Gets the last transaction date for an account using hledger
- */
-async function getLastTransactionDate(
-  mainJournalPath: string,
-  account: string,
-  executor: HledgerExecutor
-): Promise<string | null> {
-  // Use hledger register to get all transactions for the account
-  const result = await executor(['register', account, '-f', mainJournalPath, '-O', 'csv']);
-
-  if (result.exitCode !== 0 || !result.stdout.trim()) {
-    return null;
-  }
-
-  // Parse CSV output to get the last date
-  const lines = result.stdout.trim().split('\n');
-  if (lines.length < 2) {
-    return null; // Only header, no transactions
-  }
-
-  // Get the last line (most recent transaction)
-  const lastLine = lines[lines.length - 1];
-  // CSV format: "txnidx","date","code","description","account","amount","total"
-  const match = lastLine.match(/^"?\d+"?,"?(\d{4}-\d{2}-\d{2})"?/);
-  return match ? match[1] : null;
-}
-
-/**
- * Gets the balance for an account as of a specific date
- */
-async function getAccountBalance(
-  mainJournalPath: string,
-  account: string,
-  asOfDate: string,
-  executor: HledgerExecutor
-): Promise<string | null> {
-  // Use hledger balance with end date (exclusive, so add 1 day)
-  // Actually, -e is exclusive, so we need to use the day after
-  const nextDay = getNextDay(asOfDate);
-
-  const result = await executor([
-    'bal',
-    account,
-    '-f',
-    mainJournalPath,
-    '-e',
-    nextDay,
-    '-N', // No total row
-    '--flat',
-  ]);
-
-  if (result.exitCode !== 0) {
-    return null;
-  }
-
-  // Parse balance output
-  // Format: "                CHF 2324.79  assets:bank:ubs:checking"
-  const output = result.stdout.trim();
-  if (!output) {
-    return '0';
-  }
-
-  // Extract the balance value (everything before the account name)
-  const match = output.match(/^\s*(.+?)\s{2,}/);
-  return match ? match[1].trim() : output.trim();
 }
 
 /**
