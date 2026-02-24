@@ -1,13 +1,13 @@
 import { tool } from '@opencode-ai/plugin';
 import { $ } from 'bun';
 import * as path from 'path';
-import * as fs from 'fs';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import {
   loadPricesConfig,
   getDefaultBackfillDate,
   type PricesConfig,
 } from '../utils/pricesConfig.ts';
+import { updatePriceJournal } from '../utils/journalUtils.ts';
 
 /**
  * Function type for fetching price data from external sources
@@ -53,13 +53,6 @@ function getYesterday(): string {
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return d.toISOString().split('T')[0];
-}
-
-/**
- * Extracts date from a price line (second field)
- */
-function extractDateFromPriceLine(line: string): string | undefined {
-  return line.split(' ')[1];
 }
 
 /**
@@ -114,7 +107,7 @@ function parsePriceLine(line: string): { date: string; formattedLine: string } |
   if (!match) return null;
   return {
     date: match[1],
-    formattedLine: line, // Keep original line including timestamp
+    formattedLine: line, // Keep the original line including the timestamp
   };
 }
 
@@ -134,43 +127,6 @@ export function filterPriceLinesByDateRange(
     })
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((parsed) => parsed.formattedLine);
-}
-
-/**
- * Updates journal file with new prices, deduplicating by date
- */
-function updateJournalWithPrices(journalPath: string, newPriceLines: string[]): void {
-  // Read existing lines (or empty array if file doesn't exist)
-  let existingLines: string[] = [];
-  if (fs.existsSync(journalPath)) {
-    existingLines = fs
-      .readFileSync(journalPath, 'utf-8')
-      .split('\n')
-      .filter((line) => line.trim() !== '');
-  }
-
-  // Build a map of date -> price line (new prices override existing)
-  const priceMap = new Map<string, string>();
-
-  // Add existing lines to map
-  for (const line of existingLines) {
-    const date = extractDateFromPriceLine(line);
-    if (date) priceMap.set(date, line);
-  }
-
-  // Add/override with new price lines
-  for (const line of newPriceLines) {
-    const date = extractDateFromPriceLine(line);
-    if (date) priceMap.set(date, line);
-  }
-
-  // Convert map to sorted array (ascending by date - oldest first, newest at bottom)
-  const sortedLines = Array.from(priceMap.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([, line]) => line);
-
-  // Write back to file
-  fs.writeFileSync(journalPath, sortedLines.join('\n') + '\n');
 }
 
 /**
@@ -205,7 +161,7 @@ export async function fetchCurrencyPrices(
 
   for (const [ticker, currencyConfig] of Object.entries(config.currencies)) {
     try {
-      // Determine start date: use per-currency backfill_date, default backfill date, or just today
+      // Determine the start date: use per-currency backfill_date, default backfill date, or just today
       const startDate = backfill ? currencyConfig.backfill_date || defaultBackfillDate : endDate;
 
       // Build pricehist command arguments
@@ -238,7 +194,7 @@ export async function fetchCurrencyPrices(
 
       // Update journal file with deduplication
       const journalPath = path.join(directory, 'ledger', 'currencies', currencyConfig.file);
-      updateJournalWithPrices(journalPath, priceLines);
+      updatePriceJournal(journalPath, priceLines);
 
       // Return the last (most recent) price line
       const latestPriceLine = priceLines[priceLines.length - 1];
