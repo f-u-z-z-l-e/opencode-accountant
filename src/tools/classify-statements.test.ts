@@ -9,10 +9,10 @@ describe('classify-statements', () => {
 
   const mockConfig: ImportConfig = {
     paths: {
-      import: 'statements/import',
-      pending: 'doc/agent/todo/import',
-      done: 'doc/agent/done/import',
-      unrecognized: 'statements/import/unrecognized',
+      import: 'import/incoming',
+      pending: 'import/pending',
+      done: 'import/done',
+      unrecognized: 'import/unrecognized',
       rules: 'ledger/rules',
     },
     providers: {
@@ -50,7 +50,7 @@ describe('classify-statements', () => {
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
-    fs.mkdirSync(path.join(testDir, 'statements/import'), { recursive: true });
+    fs.mkdirSync(path.join(testDir, 'import/incoming'), { recursive: true });
   });
 
   afterAll(() => {
@@ -108,7 +108,7 @@ describe('classify-statements', () => {
 
   describe('file classification', () => {
     it('should classify Revolut CHF file correctly', async () => {
-      const importsDir = path.join(testDir, 'statements/import');
+      const importsDir = path.join(testDir, 'import/incoming');
       const filename = 'account-statement_2023-06-12_2026-02-11_en-us_c533c6.csv';
       fs.writeFileSync(
         path.join(importsDir, filename),
@@ -126,13 +126,13 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
       expect(parsed.unrecognized).toHaveLength(0);
 
       // Verify file was moved
-      const targetPath = path.join(testDir, 'doc/agent/todo/import/revolut/chf', filename);
+      const targetPath = path.join(testDir, 'import/pending/revolut/chf', filename);
       expect(fs.existsSync(targetPath)).toBe(true);
       expect(fs.existsSync(path.join(importsDir, filename))).toBe(false);
     });
 
     it('should classify Revolut crypto BTC file correctly', async () => {
-      const importsDir = path.join(testDir, 'statements/import');
+      const importsDir = path.join(testDir, 'import/incoming');
       const filename = 'crypto-account-statement_2024-08-12_2026-02-11_en-us_496a6e.csv';
       fs.writeFileSync(
         path.join(importsDir, filename),
@@ -149,12 +149,12 @@ BTC,Buy,0.001,50000.00,50.00,0.50,"Jan 21, 2025"`
       expect(parsed.classified[0].currency).toBe('btc');
 
       // Verify file was moved
-      const targetPath = path.join(testDir, 'doc/agent/todo/import/revolut/btc', filename);
+      const targetPath = path.join(testDir, 'import/pending/revolut/btc', filename);
       expect(fs.existsSync(targetPath)).toBe(true);
     });
 
     it('should move unrecognized files to unrecognized directory', async () => {
-      const importsDir = path.join(testDir, 'statements/import');
+      const importsDir = path.join(testDir, 'import/incoming');
       const filename = 'unknown-bank-export.csv';
       fs.writeFileSync(
         path.join(importsDir, filename),
@@ -171,13 +171,13 @@ BTC,Buy,0.001,50000.00,50.00,0.50,"Jan 21, 2025"`
       expect(parsed.unrecognized[0].filename).toBe(filename);
 
       // Verify file was moved to unrecognized
-      const targetPath = path.join(testDir, 'statements/import/unrecognized', filename);
+      const targetPath = path.join(testDir, 'import/unrecognized', filename);
       expect(fs.existsSync(targetPath)).toBe(true);
       expect(fs.existsSync(path.join(importsDir, filename))).toBe(false);
     });
 
     it('should classify multiple files of different currencies', async () => {
-      const importsDir = path.join(testDir, 'statements/import');
+      const importsDir = path.join(testDir, 'import/incoming');
 
       fs.writeFileSync(
         path.join(importsDir, 'account-statement_chf.csv'),
@@ -202,14 +202,10 @@ Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
 
       // Verify files were moved to correct directories
       expect(
-        fs.existsSync(
-          path.join(testDir, 'doc/agent/todo/import/revolut/chf/account-statement_chf.csv')
-        )
+        fs.existsSync(path.join(testDir, 'import/pending/revolut/chf/account-statement_chf.csv'))
       ).toBe(true);
       expect(
-        fs.existsSync(
-          path.join(testDir, 'doc/agent/todo/import/revolut/eur/account-statement_eur.csv')
-        )
+        fs.existsSync(path.join(testDir, 'import/pending/revolut/eur/account-statement_eur.csv'))
       ).toBe(true);
     });
   });
@@ -217,12 +213,12 @@ Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
   describe('filename collision detection', () => {
     it('should allow classification when pending files exist with different names', async () => {
       // Create a pending file with a different name
-      const pendingDir = path.join(testDir, 'doc/agent/todo/import/revolut/chf');
+      const pendingDir = path.join(testDir, 'import/pending/revolut/chf');
       fs.mkdirSync(pendingDir, { recursive: true });
       fs.writeFileSync(path.join(pendingDir, 'existing-pending.csv'), 'test');
 
       // Add a new file to imports with a different name
-      const importsDir = path.join(testDir, 'statements/import');
+      const importsDir = path.join(testDir, 'import/incoming');
       const newFilename = 'account-statement_new.csv';
       fs.writeFileSync(
         path.join(importsDir, newFilename),
@@ -246,13 +242,13 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
 
     it('should abort if filename collision would occur', async () => {
       // Create a pending file
-      const pendingDir = path.join(testDir, 'doc/agent/todo/import/revolut/chf');
+      const pendingDir = path.join(testDir, 'import/pending/revolut/chf');
       fs.mkdirSync(pendingDir, { recursive: true });
       const collidingFilename = 'account-statement_collision.csv';
       fs.writeFileSync(path.join(pendingDir, collidingFilename), 'existing data');
 
       // Add a new file to imports with the SAME name
-      const importsDir = path.join(testDir, 'statements/import');
+      const importsDir = path.join(testDir, 'import/incoming');
       fs.writeFileSync(
         path.join(importsDir, collidingFilename),
         `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
@@ -277,13 +273,13 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
 
     it('should abort entirely if any file would collide', async () => {
       // Create a pending file for one of the imports
-      const pendingDirChf = path.join(testDir, 'doc/agent/todo/import/revolut/chf');
+      const pendingDirChf = path.join(testDir, 'import/pending/revolut/chf');
       fs.mkdirSync(pendingDirChf, { recursive: true });
       const collidingFilename = 'account-statement_chf.csv';
       fs.writeFileSync(path.join(pendingDirChf, collidingFilename), 'existing');
 
       // Add two files: one will collide, one won't
-      const importsDir = path.join(testDir, 'statements/import');
+      const importsDir = path.join(testDir, 'import/incoming');
       fs.writeFileSync(
         path.join(importsDir, collidingFilename),
         `Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
@@ -311,10 +307,10 @@ Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
     it('should rename file when outputFilename is generated from metadata', async () => {
       const configWithRename: ImportConfig = {
         paths: {
-          import: 'statements/import',
-          pending: 'doc/agent/todo/import',
-          done: 'doc/agent/done/import',
-          unrecognized: 'statements/import/unrecognized',
+          import: 'import/incoming',
+          pending: 'import/pending',
+          done: 'import/done',
+          unrecognized: 'import/unrecognized',
           rules: 'ledger/rules',
         },
         providers: {
@@ -343,7 +339,7 @@ Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
         },
       };
 
-      const importsDir = path.join(testDir, 'statements/import');
+      const importsDir = path.join(testDir, 'import/incoming');
       const originalFilename = 'export-12345.csv';
       // File with 2 metadata rows (semicolon-delimited), then header and data
       fs.writeFileSync(
@@ -372,7 +368,7 @@ Date;Description;Amount;Currency;Balance
       // Verify file was moved with new name
       const targetPath = path.join(
         testDir,
-        'doc/agent/todo/import/testbank/chf',
+        'import/pending/testbank/chf',
         'transactions-testbank-1234-56789.0.csv'
       );
       expect(fs.existsSync(targetPath)).toBe(true);
