@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.1](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.1.0...v0.1.1) (2026-02-24)
+
+
+### Bug Fixes
+
+* add reconcile-statements as opencode tool ([3901889](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/3901889b4c77683df61b6d9c4a35cfdd83dbf742))
+* classifyStatmentsCore -&gt; classifyStatements ([a271dc1](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/a271dc1d9dc7ec29d2b21bdf2c9db4df4f4dd55a))
+* clean up update-prices ([5593348](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/55933480a34449d9b1fc33535c5bf1a530dd0898))
+* expose all tools ([e5055ae](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/e5055ae73a2feb0a03512c7b382937b3545564f3))
+* extract journal related code to utils ([2880519](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/288051954d12d19f723788ada84ceddcecc0eb6b))
+* linting errors ([851d6cd](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/851d6cd9aeecea2bcc37d0c8ddf225973173add1))
+* move balance related code to own utility ([f337fa1](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/f337fa1a6bf5ae63582c4b95163b886b58163b71))
+* move date specific code to own file ([2614432](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/2614432fcb0e4fa78a0e783027f576ed99fbf548))
+* move file related code to fileUtils ([d3c18fc](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/d3c18fcb562025e8501d38cac7aee3d555a7e6d3))
+* refactor hledger executor ([2a5d08d](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/2a5d08d63ec057de10d90e54cdd41727f8ef58c8))
+* refactor import-statements tool ([1a14747](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/1a1474796e1bba95b12398b49b2e4a9bcfdef581))
+* refactr reconcile-statement tool ([fae7a51](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/fae7a51b0c2ff3281206a4a4158b735b848c99e9))
+* rename update-prices to fetch-currency-prices ([51458f1](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/51458f1bf567df7a5f31a4d8949b70fb1bdca1dd))
+* spelling ([fae99a5](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/fae99a59496f2404fc8996ff2730bb97de6cee04))
+* spelling ([1edd429](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/1edd42987795f689dde21d046b3b64fa9c590b68))
+* split classify to 2 passes logic ([b0b7e42](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/b0b7e42fcf023799b892f678fb17500db43ab4ef))
+* update import test config ([07ff1b6](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/07ff1b6f67a31b0d1d124463e3047c50040d09cd))
+* use error builder ([5865794](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/586579497c86298e58477b1ae5db71392ffb2cd2))
+
 ## [0.1.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.0.17...v0.1.0) (2026-02-23)
 
 
