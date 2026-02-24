@@ -9,6 +9,7 @@ import { isInWorktree } from '../utils/worktreeManager.ts';
 import { detectProvider } from '../utils/providerDetector.ts';
 import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
 import { findCsvFiles } from '../utils/journalUtils.ts';
+import { getNextDay } from '../utils/dateUtils.ts';
 
 /**
  * Arguments for the reconcile-statement tool
@@ -148,15 +149,6 @@ async function getAccountBalance(
   // Extract the balance value (everything before the account name)
   const match = output.match(/^\s*(.+?)\s{2,}/);
   return match ? match[1].trim() : output.trim();
-}
-
-/**
- * Gets the next day in YYYY-MM-DD format
- */
-function getNextDay(dateStr: string): string {
-  const date = new Date(dateStr);
-  date.setDate(date.getDate() + 1);
-  return date.toISOString().split('T')[0];
 }
 
 /**

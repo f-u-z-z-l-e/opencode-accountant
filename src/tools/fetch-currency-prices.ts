@@ -8,6 +8,7 @@ import {
   type PricesConfig,
 } from '../utils/pricesConfig.ts';
 import { updatePriceJournal } from '../utils/journalUtils.ts';
+import { getYesterday } from '../utils/dateUtils.ts';
 
 /**
  * Function type for fetching price data from external sources
@@ -44,15 +45,6 @@ export async function defaultPriceFetcher(cmdArgs: string[]): Promise<string> {
   // Bun's template literal shell execution uses cmdArgs
   const result = await $`pricehist ${cmdArgs}`.quiet();
   return result.stdout.toString().trim();
-}
-
-/**
- * Returns yesterday's date in YYYY-MM-DD format
- */
-function getYesterday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split('T')[0];
 }
 
 /**
