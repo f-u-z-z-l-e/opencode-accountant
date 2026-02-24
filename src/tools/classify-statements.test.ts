@@ -42,11 +42,11 @@ describe('classify-statements', () => {
 
   const mockConfigLoader = () => mockConfig;
 
-  // Mock worktree checker that always returns true (simulating being inside a worktree)
+  // Mock the worktree checker that always returns true (simulating being inside a worktree)
   const inWorktree = () => true;
 
   beforeEach(() => {
-    // Clean up and recreate test directory
+    // Clean up and recreate the test directory
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
@@ -125,7 +125,7 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
       expect(parsed.classified[0].currency).toBe('chf');
       expect(parsed.unrecognized).toHaveLength(0);
 
-      // Verify file was moved
+      // Verify that the file was moved
       const targetPath = path.join(testDir, 'import/pending/revolut/chf', filename);
       expect(fs.existsSync(targetPath)).toBe(true);
       expect(fs.existsSync(path.join(importsDir, filename))).toBe(false);
@@ -148,7 +148,7 @@ BTC,Buy,0.001,50000.00,50.00,0.50,"Jan 21, 2025"`
       expect(parsed.classified[0].provider).toBe('revolut');
       expect(parsed.classified[0].currency).toBe('btc');
 
-      // Verify file was moved
+      // Verify that the file was moved
       const targetPath = path.join(testDir, 'import/pending/revolut/btc', filename);
       expect(fs.existsSync(targetPath)).toBe(true);
     });
@@ -170,7 +170,7 @@ BTC,Buy,0.001,50000.00,50.00,0.50,"Jan 21, 2025"`
       expect(parsed.unrecognized).toHaveLength(1);
       expect(parsed.unrecognized[0].filename).toBe(filename);
 
-      // Verify file was moved to unrecognized
+      // Verify that the file was moved to unrecognized
       const targetPath = path.join(testDir, 'import/unrecognized', filename);
       expect(fs.existsSync(targetPath)).toBe(true);
       expect(fs.existsSync(path.join(importsDir, filename))).toBe(false);
@@ -200,7 +200,7 @@ Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
       expect(parsed.summary.classified).toBe(2);
       expect(parsed.summary.unrecognized).toBe(0);
 
-      // Verify files were moved to correct directories
+      // Verify files were moved to the correct directories
       expect(
         fs.existsSync(path.join(testDir, 'import/pending/revolut/chf/account-statement_chf.csv'))
       ).toBe(true);
@@ -265,7 +265,7 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
 
       // Verify the new file was NOT moved
       expect(fs.existsSync(path.join(importsDir, collidingFilename))).toBe(true);
-      // Verify original pending file is untouched
+      // Verify that the original pending file is untouched
       expect(fs.readFileSync(path.join(pendingDir, collidingFilename), 'utf-8')).toBe(
         'existing data'
       );
@@ -321,10 +321,10 @@ Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
                 currencyField: 'Currency',
                 skipRows: 2,
                 delimiter: ';',
-                renamePattern: 'transactions-testbank-{accountid}.csv',
+                renamePattern: 'transactions-testbank-{accountId}.csv',
                 metadata: [
                   {
-                    field: 'accountid',
+                    field: 'accountId',
                     row: 0,
                     column: 1,
                     normalize: 'spaces-to-dashes',
@@ -365,7 +365,7 @@ Date;Description;Amount;Currency;Balance
       expect(parsed.classified[0].provider).toBe('testbank');
       expect(parsed.classified[0].currency).toBe('chf');
 
-      // Verify file was moved with new name
+      // Verify that the file was moved with a new name
       const targetPath = path.join(
         testDir,
         'import/pending/testbank/chf',

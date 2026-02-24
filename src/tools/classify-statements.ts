@@ -27,7 +27,7 @@ interface UnrecognizedFile {
 }
 
 /**
- * Collision detected when target file already exists
+ * Collision detected when a target file already exists
  */
 interface FileCollision {
   filename: string;
