@@ -8,7 +8,7 @@ import {
   type WorktreeContext,
 } from '../utils/worktreeManager.ts';
 import { classifyStatements } from './classify-statements.ts';
-import { importStatementsCore } from './import-statements.ts';
+import { importStatements } from './import-statements.ts';
 import { reconcileStatementCore } from './reconcile-statement.ts';
 import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
 
@@ -184,7 +184,7 @@ export async function importPipelineCore(
     }
 
     // Step 3: Dry run (check for unknowns)
-    const dryRunResult = await importStatementsCore(
+    const dryRunResult = await importStatements(
       worktree.path,
       agent,
       {
@@ -240,7 +240,7 @@ export async function importPipelineCore(
     }
 
     // Step 4: Actual import
-    const importResult = await importStatementsCore(
+    const importResult = await importStatements(
       worktree.path,
       agent,
       {

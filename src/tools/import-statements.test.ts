@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { importStatementsCore } from './import-statements.ts';
+import { importStatements } from './import-statements.ts';
 import type { ImportConfig } from '../utils/importConfig.ts';
 import type { HledgerExecutor, HledgerResult } from '../utils/hledgerExecutor.ts';
 
@@ -55,7 +55,7 @@ describe('import-statements', () => {
 
   describe('agent restriction', () => {
     it('should reject calls from non-accountant agents', async () => {
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'other-agent',
         {},
@@ -71,7 +71,7 @@ describe('import-statements', () => {
     });
 
     it('should reject calls from main assistant', async () => {
-      const result = await importStatementsCore(testDir, '', {}, undefined, undefined, inWorktree);
+      const result = await importStatements(testDir, '', {}, undefined, undefined, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -83,7 +83,7 @@ describe('import-statements', () => {
     const notInWorktree = () => false;
 
     it('should reject execution outside worktree', async () => {
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         {},
@@ -105,7 +105,7 @@ describe('import-statements', () => {
         throw new Error('Config file not found');
       };
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         {},
@@ -129,7 +129,7 @@ describe('import-statements', () => {
       fs.mkdirSync(pendingDir, { recursive: true });
       fs.mkdirSync(rulesDir, { recursive: true });
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: true },
@@ -155,7 +155,7 @@ describe('import-statements', () => {
       const csvPath = path.join(pendingDir, 'transactions.csv');
       fs.writeFileSync(csvPath, 'date,amount\n2026-01-01,100');
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: true },
@@ -201,7 +201,7 @@ describe('import-statements', () => {
         new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: true },
@@ -253,7 +253,7 @@ describe('import-statements', () => {
         new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: true },
@@ -301,7 +301,7 @@ describe('import-statements', () => {
         ])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { provider: 'ubs', checkOnly: true },
@@ -344,7 +344,7 @@ describe('import-statements', () => {
         ])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { provider: 'revolut', currency: 'eur', checkOnly: true },
@@ -381,7 +381,7 @@ describe('import-statements', () => {
         new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: false },
@@ -426,7 +426,7 @@ describe('import-statements', () => {
         ])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: false },
@@ -482,7 +482,7 @@ describe('import-statements', () => {
         ])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: false },
@@ -522,7 +522,7 @@ describe('import-statements', () => {
         ])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: false },
@@ -564,7 +564,7 @@ describe('import-statements', () => {
         new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: true },
@@ -606,7 +606,7 @@ describe('import-statements', () => {
         new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: true },
@@ -652,7 +652,7 @@ describe('import-statements', () => {
         ])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: false },
@@ -708,7 +708,7 @@ describe('import-statements', () => {
         ])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: false },
@@ -766,7 +766,7 @@ describe('import-statements', () => {
         ])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: false },
@@ -802,7 +802,7 @@ describe('import-statements', () => {
         new Map([['print', { stdout: '', stderr: 'Invalid CSV format', exitCode: 1 }]])
       );
 
-      const result = await importStatementsCore(
+      const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: true },

@@ -8,6 +8,7 @@ import { parseAccount1 } from '../utils/rulesParser.ts';
 import { isInWorktree } from '../utils/worktreeManager.ts';
 import { detectProvider } from '../utils/providerDetector.ts';
 import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
+import { findCsvFiles } from '../utils/journalUtils.ts';
 
 /**
  * Arguments for the reconcile-statement tool
@@ -49,46 +50,6 @@ interface ReconcileResult {
   metadata?: CsvMetadata;
   error?: string;
   hint?: string;
-}
-
-/**
- * Finds CSV files in the done directory (recently imported)
- */
-function findDoneCsvFiles(doneDir: string, provider?: string, currency?: string): string[] {
-  const csvFiles: string[] = [];
-
-  if (!fs.existsSync(doneDir)) {
-    return csvFiles;
-  }
-
-  // Build the search path based on filters
-  let searchPath = doneDir;
-  if (provider) {
-    searchPath = path.join(searchPath, provider);
-    if (currency) {
-      searchPath = path.join(searchPath, currency);
-    }
-  }
-
-  if (!fs.existsSync(searchPath)) {
-    return csvFiles;
-  }
-
-  // Recursive function to find all CSV files
-  function scanDirectory(directory: string): void {
-    const entries = fs.readdirSync(directory, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        scanDirectory(fullPath);
-      } else if (entry.isFile() && entry.name.endsWith('.csv')) {
-        csvFiles.push(fullPath);
-      }
-    }
-  }
-
-  scanDirectory(searchPath);
-  return csvFiles.sort();
 }
 
 /**
@@ -283,7 +244,7 @@ export async function reconcileStatementCore(
   const mainJournalPath = path.join(directory, '.hledger.journal');
 
   // Find CSV files in done directory
-  const csvFiles = findDoneCsvFiles(doneDir, options.provider, options.currency);
+  const csvFiles = findCsvFiles(doneDir, options.provider, options.currency);
 
   if (csvFiles.length === 0) {
     return JSON.stringify({
