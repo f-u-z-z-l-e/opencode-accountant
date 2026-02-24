@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import csvToJson from 'convert-csv-to-json';
 import type { RulesConfig, AmountFields } from './rulesParser.ts';
+import { parseAmountValue } from './balanceUtils.ts';
 
 /**
  * Represents a single CSV row with field names as keys.
@@ -66,15 +67,6 @@ export function parseCsvFile(csvPath: string, config: RulesConfig): CsvRowData[]
   }
 
   return mappedRows;
-}
-
-/**
- * Parse amount string to extract numeric value.
- * Handles formats like "CHF95.25", "CHF-10.00", "-95.25", "95.25"
- */
-function parseAmountValue(amountStr: string): number {
-  const cleaned = amountStr.replace(/[A-Z]{3}\s*/g, '').trim();
-  return parseFloat(cleaned) || 0;
 }
 
 /**

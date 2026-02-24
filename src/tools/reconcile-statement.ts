@@ -10,6 +10,7 @@ import { detectProvider } from '../utils/providerDetector.ts';
 import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
 import { findCsvFiles } from '../utils/journalUtils.ts';
 import { getNextDay } from '../utils/dateUtils.ts';
+import { calculateDifference, balancesMatch } from '../utils/balanceUtils.ts';
 
 /**
  * Arguments for the reconcile-statement tool
@@ -149,46 +150,6 @@ async function getAccountBalance(
   // Extract the balance value (everything before the account name)
   const match = output.match(/^\s*(.+?)\s{2,}/);
   return match ? match[1].trim() : output.trim();
-}
-
-/**
- * Parses a balance string to extract numeric value and currency
- */
-function parseBalance(balance: string): { currency: string; amount: number } | null {
-  // Handle formats like "CHF 2324.79" or "2324.79 CHF" or "CHF2324.79"
-  const match = balance.match(/([A-Z]{3})\s*([-\d.,]+)|([+-]?[\d.,]+)\s*([A-Z]{3})/);
-  if (!match) {
-    // Try pure number
-    const numMatch = balance.match(/^([+-]?[\d.,]+)$/);
-    if (numMatch) {
-      return { currency: '', amount: parseFloat(numMatch[1].replace(',', '')) };
-    }
-    return null;
-  }
-
-  const currency = match[1] || match[4];
-  const amountStr = match[2] || match[3];
-  const amount = parseFloat(amountStr.replace(',', ''));
-
-  return { currency, amount };
-}
-
-/**
- * Calculates the difference between two balances
- */
-function calculateDifference(expected: string, actual: string): string {
-  const expectedParsed = parseBalance(expected);
-  const actualParsed = parseBalance(actual);
-
-  if (!expectedParsed || !actualParsed) {
-    return `Cannot compare: ${expected} vs ${actual}`;
-  }
-
-  const diff = actualParsed.amount - expectedParsed.amount;
-  const sign = diff >= 0 ? '+' : '';
-  const currency = expectedParsed.currency || actualParsed.currency;
-
-  return `${currency} ${sign}${diff.toFixed(2)}`;
 }
 
 /**
@@ -334,10 +295,10 @@ export async function reconcileStatementCore(
   }
 
   // Compare balances
-  const expectedParsed = parseBalance(closingBalance);
-  const actualParsed = parseBalance(actualBalance);
-
-  if (!expectedParsed || !actualParsed) {
+  let doBalancesMatch: boolean;
+  try {
+    doBalancesMatch = balancesMatch(closingBalance, actualBalance);
+  } catch (error) {
     return JSON.stringify({
       success: false,
       csvFile: relativeCsvPath,
@@ -345,15 +306,12 @@ export async function reconcileStatementCore(
       lastTransactionDate,
       expectedBalance: closingBalance,
       actualBalance,
-      error: `Cannot parse balances for comparison: expected="${closingBalance}", actual="${actualBalance}"`,
+      error: `Cannot parse balances for comparison: ${error instanceof Error ? error.message : String(error)}`,
       metadata,
     } satisfies Partial<ReconcileResult>);
   }
 
-  // Check if balances match (allow small floating point difference)
-  const balancesMatch = Math.abs(expectedParsed.amount - actualParsed.amount) < 0.01;
-
-  if (balancesMatch) {
+  if (doBalancesMatch) {
     return JSON.stringify({
       success: true,
       csvFile: relativeCsvPath,
@@ -366,7 +324,21 @@ export async function reconcileStatementCore(
   }
 
   // Balances don't match
-  const difference = calculateDifference(closingBalance, actualBalance);
+  let difference: string;
+  try {
+    difference = calculateDifference(closingBalance, actualBalance);
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      csvFile: relativeCsvPath,
+      account,
+      lastTransactionDate,
+      expectedBalance: closingBalance,
+      actualBalance,
+      error: `Failed to calculate difference: ${error instanceof Error ? error.message : String(error)}`,
+      metadata,
+    } satisfies Partial<ReconcileResult>);
+  }
 
   return JSON.stringify({
     success: false,
