@@ -195,9 +195,9 @@ function executeMoves(
 }
 
 /**
- * Core logic for classifying statements, extracted for testing
+ * Classifies bank statement CSV files by detecting provider and currency
  */
-export async function classifyStatementsCore(
+export async function classifyStatements(
   directory: string,
   agent: string,
   // eslint-disable-next-line no-unused-vars
@@ -267,6 +267,6 @@ export default tool({
   args: {},
   async execute(_params, context) {
     const { directory, agent } = context;
-    return classifyStatementsCore(directory, agent);
+    return classifyStatements(directory, agent);
   },
 });

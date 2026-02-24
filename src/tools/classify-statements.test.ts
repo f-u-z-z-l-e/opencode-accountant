@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { classifyStatementsCore } from './classify-statements.ts';
+import { classifyStatements } from './classify-statements.ts';
 import type { ImportConfig } from '../utils/importConfig.ts';
 
 describe('classify-statements', () => {
@@ -61,7 +61,7 @@ describe('classify-statements', () => {
 
   describe('agent restriction', () => {
     it('should reject non-accountant agents', async () => {
-      const result = await classifyStatementsCore(testDir, 'user', mockConfigLoader, inWorktree);
+      const result = await classifyStatements(testDir, 'user', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -70,12 +70,7 @@ describe('classify-statements', () => {
     });
 
     it('should accept accountant agent', async () => {
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -86,7 +81,7 @@ describe('classify-statements', () => {
     const notInWorktree = () => false;
 
     it('should reject execution outside worktree', async () => {
-      const result = await classifyStatementsCore(
+      const result = await classifyStatements(
         testDir,
         'accountant',
         mockConfigLoader,
@@ -102,12 +97,7 @@ describe('classify-statements', () => {
 
   describe('empty imports directory', () => {
     it('should return success with empty arrays when no CSV files', async () => {
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -126,12 +116,7 @@ describe('classify-statements', () => {
 Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
       );
 
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -155,12 +140,7 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
 BTC,Buy,0.001,50000.00,50.00,0.50,"Jan 21, 2025"`
       );
 
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -182,12 +162,7 @@ BTC,Buy,0.001,50000.00,50.00,0.50,"Jan 21, 2025"`
 2023-06-12,Test,100`
       );
 
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -216,12 +191,7 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
 Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
       );
 
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -260,12 +230,7 @@ Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
 Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
       );
 
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -294,12 +259,7 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
 Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
       );
 
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -335,12 +295,7 @@ Deposit,Current,2023-06-12,2023-06-12,Test,100,0,CHF,COMPLETED,100`
 Transfer,Current,2024-01-19,2024-01-19,Test,500,0,EUR,COMPLETED,500`
       );
 
-      const result = await classifyStatementsCore(
-        testDir,
-        'accountant',
-        mockConfigLoader,
-        inWorktree
-      );
+      const result = await classifyStatements(testDir, 'accountant', mockConfigLoader, inWorktree);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -399,7 +354,7 @@ Date;Description;Amount;Currency;Balance
 2024-01-15;Test transaction;100.00;CHF;1000.00`
       );
 
-      const result = await classifyStatementsCore(
+      const result = await classifyStatements(
         testDir,
         'accountant',
         () => configWithRename,
@@ -431,7 +386,7 @@ Date;Description;Amount;Currency;Balance
         throw new Error('Config file not found');
       };
 
-      const result = await classifyStatementsCore(
+      const result = await classifyStatements(
         testDir,
         'accountant',
         failingConfigLoader,
