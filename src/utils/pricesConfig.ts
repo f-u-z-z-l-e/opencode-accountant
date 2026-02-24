@@ -18,7 +18,7 @@ const CONFIG_FILE = 'config/prices.yaml';
 const REQUIRED_CURRENCY_FIELDS: (keyof CurrencyConfig)[] = ['source', 'pair', 'file'];
 
 /**
- * Returns the default backfill date (January 1st of current year)
+ * Returns the default backfill date (January 1st of the current year)
  */
 export function getDefaultBackfillDate(): string {
   const year = new Date().getFullYear();
@@ -54,14 +54,14 @@ function validateCurrencyConfig(name: string, config: unknown): CurrencyConfig {
 
 /**
  * Loads and validates the prices configuration from the user's project directory
- * @param directory The base directory (typically context.directory)
+ * @param directory The base directory (typically 'context.directory')
  * @returns Validated PricesConfig object
  * @throws Error if config file is missing, invalid YAML, or missing required fields
  */
 export function loadPricesConfig(directory: string): PricesConfig {
   const configPath = path.join(directory, CONFIG_FILE);
 
-  // Check if file exists
+  // Check if the file exists
   if (!fs.existsSync(configPath)) {
     throw new Error(
       `Configuration file not found: ${CONFIG_FILE}. Please refer to the plugin's GitHub repository for setup instructions.`

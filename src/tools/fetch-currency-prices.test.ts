@@ -29,7 +29,7 @@ describe('fetch-currency-prices tool', () => {
 `;
 
   beforeAll(() => {
-    // Create test directory structure
+    // Create the test directory structure
     fs.mkdirSync(ledgerDir, { recursive: true });
     fs.mkdirSync(configDir, { recursive: true });
   });
@@ -80,13 +80,13 @@ describe('fetch-currency-prices tool', () => {
     yesterday.setDate(yesterday.getDate() - 1);
     const dateStr = yesterday.toISOString().split('T')[0];
 
-    // Mock pricehist responses with real data format
+    // Mock pricehist responses with the real data format
     const mockPriceFetcher = async (cmdArgs: string[]): Promise<string> => {
       // The pair is the last arg, but for USD with --fmt-base, it's before the last two args
       const pairIndex =
         cmdArgs.indexOf('--fmt-base') !== -1
-          ? cmdArgs.length - 3 // If --fmt-base exists, pair is 3rd from end
-          : cmdArgs.length - 1; // Otherwise, pair is last
+          ? cmdArgs.length - 3 // If --fmt-base exists, the pair is 3rd from the end
+          : cmdArgs.length - 1; // Otherwise, the pair is last
       const pair = cmdArgs[pairIndex];
 
       if (pair === 'BTC/CHF') {
@@ -142,7 +142,7 @@ describe('fetch-currency-prices tool', () => {
     dayAfter.setDate(dayAfter.getDate() + 1);
     const dayAfterStr = dayAfter.toISOString().split('T')[0];
 
-    // Pre-populate BTC file with existing prices (day before and day after yesterday)
+    // Pre-populate the BTC file with existing prices (day before and day after yesterday)
     const btcPath = path.join(ledgerDir, 'btc-chf.journal');
     fs.writeFileSync(
       btcPath,
