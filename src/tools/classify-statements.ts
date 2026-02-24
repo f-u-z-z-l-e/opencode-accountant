@@ -1,10 +1,11 @@
 import { tool } from '@opencode-ai/plugin';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
 import { detectProvider, type DetectionResult } from '../utils/providerDetector.ts';
 import { isInWorktree } from '../utils/worktreeManager.ts';
+import { findCSVFiles, ensureDirectory } from '../utils/fileUtils.ts';
 
 /**
  * Result for a single classified CSV file
@@ -43,32 +44,6 @@ interface ClassifyResult {
   collisions?: FileCollision[];
   error?: string;
   hint?: string;
-}
-
-/**
- * Finds all CSV files in the imports directory
- */
-function findCSVFiles(importsDir: string): string[] {
-  if (!fs.existsSync(importsDir)) {
-    return [];
-  }
-
-  return fs
-    .readdirSync(importsDir)
-    .filter((file) => file.toLowerCase().endsWith('.csv'))
-    .filter((file) => {
-      const fullPath = path.join(importsDir, file);
-      return fs.statSync(fullPath).isFile();
-    });
-}
-
-/**
- * Ensures a directory exists, creating it recursively if needed
- */
-function ensureDirectory(dirPath: string): void {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
 }
 
 /**
