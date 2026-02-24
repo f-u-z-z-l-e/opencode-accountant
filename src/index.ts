@@ -2,7 +2,12 @@ import type { Plugin } from '@opencode-ai/plugin';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadAgent } from './utils/agentLoader.ts';
-import { fetchCurrencyPrices, classifyStatements, importStatements } from './tools/index.ts';
+import {
+  fetchCurrencyPrices,
+  classifyStatements,
+  importStatements,
+  reconcileStatement,
+} from './tools/index.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AGENT_FILE = join(__dirname, '..', 'agent', 'accountant.md');
@@ -15,6 +20,7 @@ const AccountantPlugin: Plugin = async () => {
       'fetch-currency-prices': fetchCurrencyPrices,
       'classify-statements': classifyStatements,
       'import-statements': importStatements,
+      'reconcile-statements': reconcileStatement,
     },
     config: async (config: Record<string, unknown>): Promise<void> => {
       if (agent) {

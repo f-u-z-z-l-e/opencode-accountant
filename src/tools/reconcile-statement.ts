@@ -59,7 +59,21 @@ interface ReconcileResult {
 }
 
 /**
- * Build an error result for the reconcile-statement tool
+ * Build an error result for the reconcile-statement tool.
+ *
+ * Creates a standardized JSON error response with optional context fields.
+ *
+ * @param params - Error result parameters
+ * @param params.csvFile - Path to the CSV file being reconciled (optional)
+ * @param params.account - The account being reconciled (optional)
+ * @param params.lastTransactionDate - Date of last transaction (optional)
+ * @param params.expectedBalance - Expected closing balance (optional)
+ * @param params.actualBalance - Actual balance from hledger (optional)
+ * @param params.difference - Calculated difference (optional)
+ * @param params.metadata - CSV metadata (optional)
+ * @param params.error - Error message (required)
+ * @param params.hint - Helpful hint for resolving the error (optional)
+ * @returns JSON string with success: false
  */
 function buildErrorResult(params: {
   csvFile?: string;
@@ -79,7 +93,18 @@ function buildErrorResult(params: {
 }
 
 /**
- * Build a success result for the reconcile-statement tool
+ * Build a success result for the reconcile-statement tool.
+ *
+ * Creates a standardized JSON success response.
+ *
+ * @param params - Success result parameters
+ * @param params.csvFile - Path to the CSV file being reconciled
+ * @param params.account - The account being reconciled
+ * @param params.lastTransactionDate - Date of last transaction
+ * @param params.expectedBalance - Expected closing balance
+ * @param params.actualBalance - Actual balance from hledger
+ * @param params.metadata - CSV metadata (optional)
+ * @returns JSON string with success: true
  */
 function buildSuccessResult(params: {
   csvFile: string;
@@ -96,7 +121,13 @@ function buildSuccessResult(params: {
 }
 
 /**
- * Validate that the directory is an import worktree
+ * Validate that the directory is an import worktree.
+ *
+ * Ensures the tool is being run in the correct context (inside an import worktree).
+ *
+ * @param directory - Directory to check
+ * @param worktreeChecker - Function that checks if directory is a worktree
+ * @returns Error result string if validation fails, null if valid
  */
 function validateWorktree(
   directory: string,
@@ -113,7 +144,13 @@ function validateWorktree(
 }
 
 /**
- * Load import configuration
+ * Load import configuration from the directory.
+ *
+ * Attempts to load the import configuration file (providers.yaml).
+ *
+ * @param directory - Directory containing the configuration
+ * @param configLoader - Function to load the configuration
+ * @returns Config object on success, or error object with error message
  */
 function loadConfiguration(
   directory: string,
@@ -134,7 +171,14 @@ function loadConfiguration(
 }
 
 /**
- * Find CSV file to reconcile
+ * Find CSV file to reconcile in the done directory.
+ *
+ * Searches for CSV files matching the optional provider and currency filters.
+ * Returns the most recently modified file.
+ *
+ * @param doneDir - Directory containing completed CSV imports
+ * @param options - Filter options (provider, currency)
+ * @returns CSV file path and relative path on success, or error object
  */
 function findCsvToReconcile(
   doneDir: string,
@@ -143,10 +187,12 @@ function findCsvToReconcile(
   const csvFiles = findCsvFiles(doneDir, options.provider, options.currency);
 
   if (csvFiles.length === 0) {
+    const providerFilter = options.provider ? ` --provider=${options.provider}` : '';
+    const currencyFilter = options.currency ? ` --currency=${options.currency}` : '';
     return {
       error: buildErrorResult({
-        error: 'No CSV files found in done directory to reconcile',
-        hint: 'Run import-statements first to import CSV files',
+        error: `No CSV files found in ${doneDir}`,
+        hint: `Run: import-statements${providerFilter}${currencyFilter}`,
       }),
     };
   }
@@ -158,7 +204,16 @@ function findCsvToReconcile(
 }
 
 /**
- * Determine closing balance from CSV metadata or manual override
+ * Determine closing balance from CSV metadata or manual override.
+ *
+ * Attempts to extract the closing balance from CSV header metadata.
+ * Falls back to manual override if provided, or returns error if neither available.
+ *
+ * @param csvFile - Path to the CSV file
+ * @param config - Import configuration
+ * @param options - Reconciliation options (may include manual closingBalance)
+ * @param relativeCsvPath - Relative path to CSV for error messages
+ * @returns Closing balance and metadata on success, or error object
  */
 function determineClosingBalance(
   csvFile: string,
@@ -202,7 +257,17 @@ function determineClosingBalance(
 }
 
 /**
- * Determine account from rules file or manual override
+ * Determine account from rules file or manual override.
+ *
+ * Attempts to find the matching rules file and extract the account1 directive.
+ * Falls back to manual override if provided, or returns error if neither available.
+ *
+ * @param csvFile - Path to the CSV file
+ * @param rulesDir - Directory containing rules files
+ * @param options - Reconciliation options (may include manual account)
+ * @param relativeCsvPath - Relative path to CSV for error messages
+ * @param metadata - CSV metadata (for error context)
+ * @returns Account name on success, or error object
  */
 function determineAccount(
   csvFile: string,
@@ -223,11 +288,16 @@ function determineAccount(
   }
 
   if (!account) {
+    const rulesMapping = loadRulesMapping(rulesDir);
+    const rulesFile = findRulesForCsv(csvFile, rulesMapping);
+    const rulesHint = rulesFile
+      ? `Add 'account1 assets:bank:...' to ${rulesFile} or use --account parameter`
+      : `Create a rules file in ${rulesDir} with 'account1' directive or use --account parameter`;
     return {
       error: buildErrorResult({
         csvFile: relativeCsvPath,
         error: 'Could not determine account from rules file',
-        hint: 'Provide account parameter manually or ensure rules file has account1 directive',
+        hint: rulesHint,
         metadata,
       }),
     };
@@ -332,6 +402,7 @@ export async function reconcileStatementCore(
       account,
       lastTransactionDate,
       error: 'Failed to query account balance from hledger',
+      hint: `Check journal syntax: hledger check -f ${mainJournalPath}`,
       metadata,
     });
   }
