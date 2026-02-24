@@ -35,6 +35,17 @@ interface FileCollision {
 }
 
 /**
+ * Planned move for a single file
+ */
+interface PlannedMove {
+  filename: string;
+  sourcePath: string;
+  targetPath: string;
+  targetFilename: string;
+  detection: DetectionResult | null;
+}
+
+/**
  * Overall result of the classify-statements tool
  */
 interface ClassifyResult {
@@ -78,6 +89,98 @@ function buildErrorResult(error: string, hint?: string): string {
     classified: [],
     unrecognized: [],
   } satisfies ClassifyResult);
+}
+
+/**
+ * First pass: detect all files and check for collisions (no file operations)
+ */
+function planMoves(
+  csvFiles: string[],
+  importsDir: string,
+  pendingDir: string,
+  unrecognizedDir: string,
+  config: ImportConfig
+): { plannedMoves: PlannedMove[]; collisions: FileCollision[] } {
+  const plannedMoves: PlannedMove[] = [];
+  const collisions: FileCollision[] = [];
+
+  for (const filename of csvFiles) {
+    const sourcePath = path.join(importsDir, filename);
+    const content = fs.readFileSync(sourcePath, 'utf-8');
+    const detection: DetectionResult | null = detectProvider(filename, content, config);
+
+    let targetPath: string;
+    let targetFilename: string;
+
+    if (detection) {
+      targetFilename = detection.outputFilename || filename;
+      const targetDir = path.join(pendingDir, detection.provider, detection.currency);
+      targetPath = path.join(targetDir, targetFilename);
+    } else {
+      targetFilename = filename;
+      targetPath = path.join(unrecognizedDir, filename);
+    }
+
+    if (fs.existsSync(targetPath)) {
+      collisions.push({
+        filename,
+        existingPath: targetPath,
+      });
+    }
+
+    plannedMoves.push({
+      filename,
+      sourcePath,
+      targetPath,
+      targetFilename,
+      detection,
+    });
+  }
+
+  return { plannedMoves, collisions };
+}
+
+/**
+ * Second pass: execute all moves (file operations)
+ */
+function executeMoves(
+  plannedMoves: PlannedMove[],
+  config: ImportConfig,
+  unrecognizedDir: string
+): { classified: ClassifiedFile[]; unrecognized: UnrecognizedFile[] } {
+  const classified: ClassifiedFile[] = [];
+  const unrecognized: UnrecognizedFile[] = [];
+
+  for (const move of plannedMoves) {
+    if (move.detection) {
+      const targetDir = path.dirname(move.targetPath);
+      ensureDirectory(targetDir);
+      fs.renameSync(move.sourcePath, move.targetPath);
+
+      classified.push({
+        filename: move.targetFilename,
+        originalFilename: move.detection.outputFilename ? move.filename : undefined,
+        provider: move.detection.provider,
+        currency: move.detection.currency,
+        targetPath: path.join(
+          config.paths.pending,
+          move.detection.provider,
+          move.detection.currency,
+          move.targetFilename
+        ),
+      });
+    } else {
+      ensureDirectory(unrecognizedDir);
+      fs.renameSync(move.sourcePath, move.targetPath);
+
+      unrecognized.push({
+        filename: move.filename,
+        targetPath: path.join(config.paths.unrecognized, move.filename),
+      });
+    }
+  }
+
+  return { classified, unrecognized };
 }
 
 /**
@@ -128,50 +231,13 @@ export async function classifyStatementsCore(
   }
 
   // First pass: detect all files and check for collisions
-  interface PlannedMove {
-    filename: string;
-    sourcePath: string;
-    targetPath: string;
-    targetFilename: string;
-    detection: DetectionResult | null;
-  }
-
-  const plannedMoves: PlannedMove[] = [];
-  const collisions: FileCollision[] = [];
-
-  for (const filename of csvFiles) {
-    const sourcePath = path.join(importsDir, filename);
-    const content = fs.readFileSync(sourcePath, 'utf-8');
-    const detection: DetectionResult | null = detectProvider(filename, content, config);
-
-    let targetPath: string;
-    let targetFilename: string;
-
-    if (detection) {
-      targetFilename = detection.outputFilename || filename;
-      const targetDir = path.join(pendingDir, detection.provider, detection.currency);
-      targetPath = path.join(targetDir, targetFilename);
-    } else {
-      targetFilename = filename;
-      targetPath = path.join(unrecognizedDir, filename);
-    }
-
-    // Check for collision
-    if (fs.existsSync(targetPath)) {
-      collisions.push({
-        filename,
-        existingPath: targetPath,
-      });
-    }
-
-    plannedMoves.push({
-      filename,
-      sourcePath,
-      targetPath,
-      targetFilename,
-      detection,
-    });
-  }
+  const { plannedMoves, collisions } = planMoves(
+    csvFiles,
+    importsDir,
+    pendingDir,
+    unrecognizedDir,
+    config
+  );
 
   // Abort if any collisions detected
   if (collisions.length > 0) {
@@ -185,40 +251,8 @@ export async function classifyStatementsCore(
     } satisfies ClassifyResult);
   }
 
-  // Second pass: execute all moves (no collisions)
-  const classified: ClassifiedFile[] = [];
-  const unrecognized: UnrecognizedFile[] = [];
-
-  for (const move of plannedMoves) {
-    if (move.detection) {
-      // Move to provider/currency directory
-      const targetDir = path.dirname(move.targetPath);
-      ensureDirectory(targetDir);
-      fs.renameSync(move.sourcePath, move.targetPath);
-
-      classified.push({
-        filename: move.targetFilename,
-        originalFilename: move.detection.outputFilename ? move.filename : undefined,
-        provider: move.detection.provider,
-        currency: move.detection.currency,
-        targetPath: path.join(
-          config.paths.pending,
-          move.detection.provider,
-          move.detection.currency,
-          move.targetFilename
-        ),
-      });
-    } else {
-      // Move to unrecognized directory
-      ensureDirectory(unrecognizedDir);
-      fs.renameSync(move.sourcePath, move.targetPath);
-
-      unrecognized.push({
-        filename: move.filename,
-        targetPath: path.join(config.paths.unrecognized, move.filename),
-      });
-    }
-  }
+  // Second pass: execute all moves
+  const { classified, unrecognized } = executeMoves(plannedMoves, config, unrecognizedDir);
 
   return buildSuccessResult(classified, unrecognized);
 }

@@ -199,7 +199,7 @@ export async function updatePricesCore(
   return JSON.stringify({
     success: results.every((r) => !('error' in r)),
     endDate,
-    backfill: !!backfill,
+    backfill: backfill,
     results,
   });
 }
