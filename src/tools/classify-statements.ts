@@ -44,6 +44,40 @@ interface ClassifyResult {
   collisions?: FileCollision[];
   error?: string;
   hint?: string;
+  message?: string;
+  summary?: {
+    total: number;
+    classified: number;
+    unrecognized: number;
+  };
+}
+
+function buildSuccessResult(
+  classified: ClassifiedFile[],
+  unrecognized: UnrecognizedFile[],
+  message?: string
+): string {
+  return JSON.stringify({
+    success: true,
+    classified,
+    unrecognized,
+    message,
+    summary: {
+      total: classified.length + unrecognized.length,
+      classified: classified.length,
+      unrecognized: unrecognized.length,
+    },
+  });
+}
+
+function buildErrorResult(error: string, hint?: string): string {
+  return JSON.stringify({
+    success: false,
+    error,
+    hint,
+    classified: [],
+    unrecognized: [],
+  } satisfies ClassifyResult);
 }
 
 /**
@@ -68,13 +102,10 @@ export async function classifyStatementsCore(
 
   // Enforce worktree requirement
   if (!worktreeChecker(directory)) {
-    return JSON.stringify({
-      success: false,
-      error: 'classify-statements must be run inside an import worktree',
-      hint: 'Use import-pipeline tool to orchestrate the full workflow',
-      classified: [],
-      unrecognized: [],
-    } satisfies ClassifyResult);
+    return buildErrorResult(
+      'classify-statements must be run inside an import worktree',
+      'Use import-pipeline tool to orchestrate the full workflow'
+    );
   }
 
   // Load configuration
@@ -82,12 +113,8 @@ export async function classifyStatementsCore(
   try {
     config = configLoader(directory);
   } catch (err) {
-    return JSON.stringify({
-      success: false,
-      error: err instanceof Error ? err.message : String(err),
-      classified: [],
-      unrecognized: [],
-    } satisfies ClassifyResult);
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return buildErrorResult(errorMessage);
   }
 
   const importsDir = path.join(directory, config.paths.import);
@@ -97,12 +124,7 @@ export async function classifyStatementsCore(
   // Find CSV files to process
   const csvFiles = findCSVFiles(importsDir);
   if (csvFiles.length === 0) {
-    return JSON.stringify({
-      success: true,
-      classified: [],
-      unrecognized: [],
-      message: `No CSV files found in ${config.paths.import}`,
-    });
+    return buildSuccessResult([], [], `No CSV files found in ${config.paths.import}`);
   }
 
   // First pass: detect all files and check for collisions
@@ -153,9 +175,10 @@ export async function classifyStatementsCore(
 
   // Abort if any collisions detected
   if (collisions.length > 0) {
+    const errorMessage = `Cannot classify: ${collisions.length} file(s) would overwrite existing pending files.`;
     return JSON.stringify({
       success: false,
-      error: `Cannot classify: ${collisions.length} file(s) would overwrite existing pending files.`,
+      error: errorMessage,
       collisions,
       classified: [],
       unrecognized: [],
@@ -197,16 +220,7 @@ export async function classifyStatementsCore(
     }
   }
 
-  return JSON.stringify({
-    success: true,
-    classified,
-    unrecognized,
-    summary: {
-      total: csvFiles.length,
-      classified: classified.length,
-      unrecognized: unrecognized.length,
-    },
-  });
+  return buildSuccessResult(classified, unrecognized);
 }
 
 export default tool({
