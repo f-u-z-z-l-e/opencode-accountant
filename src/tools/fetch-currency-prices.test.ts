@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { updatePrices } from './update-prices.ts';
+import { fetchCurrencyPrices } from './fetch-currency-prices.ts';
 import { getDefaultBackfillDate } from '../utils/pricesConfig.ts';
 
-describe('update-prices tool', () => {
-  const testDir = path.join(process.cwd(), '.memory', 'test-update-prices');
+describe('fetch-currency-prices tool', () => {
+  const testDir = path.join(process.cwd(), '.memory', 'test-fetch-currency-prices');
   const ledgerDir = path.join(testDir, 'ledger', 'currencies');
   const configDir = path.join(testDir, 'config');
 
@@ -55,7 +55,7 @@ describe('update-prices tool', () => {
   });
 
   it('should reject non-accountant agents', async () => {
-    const result = await updatePrices(testDir, 'other-agent', false);
+    const result = await fetchCurrencyPrices(testDir, 'other-agent', false);
     const parsed = JSON.parse(result);
 
     expect(parsed.error).toBeDefined();
@@ -66,7 +66,7 @@ describe('update-prices tool', () => {
     const emptyDir = path.join(testDir, 'empty-project');
     fs.mkdirSync(emptyDir, { recursive: true });
 
-    const result = await updatePrices(emptyDir, 'accountant', false);
+    const result = await fetchCurrencyPrices(emptyDir, 'accountant', false);
     const parsed = JSON.parse(result);
 
     expect(parsed.error).toBeDefined();
@@ -99,7 +99,7 @@ describe('update-prices tool', () => {
       return '';
     };
 
-    const result = await updatePrices(testDir, 'accountant', false, mockPriceFetcher);
+    const result = await fetchCurrencyPrices(testDir, 'accountant', false, mockPriceFetcher);
     const parsed = JSON.parse(result);
 
     expect(parsed.success).toBe(true);
@@ -165,7 +165,7 @@ describe('update-prices tool', () => {
       return '';
     };
 
-    await updatePrices(testDir, 'accountant', false, mockPriceFetcher);
+    await fetchCurrencyPrices(testDir, 'accountant', false, mockPriceFetcher);
 
     // Read BTC file and verify sorting
     const btcContent = fs.readFileSync(btcPath, 'utf-8');
@@ -201,7 +201,7 @@ describe('update-prices tool', () => {
       return '';
     };
 
-    const result = await updatePrices(testDir, 'accountant', true, mockPriceFetcher);
+    const result = await fetchCurrencyPrices(testDir, 'accountant', true, mockPriceFetcher);
     const parsed = JSON.parse(result);
 
     expect(parsed.backfill).toBe(true);
@@ -238,7 +238,7 @@ describe('update-prices tool', () => {
       return 'P 2026-02-18 00:00:00 BTC 88494.8925094421 CHF';
     };
 
-    await updatePrices(testDir, 'accountant', true, mockPriceFetcher);
+    await fetchCurrencyPrices(testDir, 'accountant', true, mockPriceFetcher);
 
     const expectedDate = getDefaultBackfillDate();
     expect(capturedStartDate).toBe(expectedDate);

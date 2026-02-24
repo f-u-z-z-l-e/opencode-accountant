@@ -174,9 +174,9 @@ function updateJournalWithPrices(journalPath: string, newPriceLines: string[]): 
 }
 
 /**
- * Updates price data for all configured currencies
+ * Fetches currency price data for all configured currencies
  */
-export async function updatePrices(
+export async function fetchCurrencyPrices(
   directory: string,
   agent: string,
   backfill: boolean,
@@ -185,7 +185,7 @@ export async function updatePrices(
   configLoader: (directory: string) => PricesConfig = loadPricesConfig
 ): Promise<string> {
   // Agent restriction
-  const restrictionError = checkAccountantAgent(agent, 'update prices');
+  const restrictionError = checkAccountantAgent(agent, 'fetch currency prices');
   if (restrictionError) {
     return restrictionError;
   }
@@ -272,6 +272,6 @@ export default tool({
   async execute(params, context) {
     const { directory, agent } = context;
     const { backfill } = params;
-    return updatePrices(directory, agent, backfill || false);
+    return fetchCurrencyPrices(directory, agent, backfill || false);
   },
 });

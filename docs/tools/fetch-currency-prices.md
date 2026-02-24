@@ -1,6 +1,6 @@
-# update-prices Tool
+# fetch-currency-prices Tool
 
-The `update-prices` tool fetches end-of-day currency exchange rates and updates the price journals in `ledger/currencies/`. It uses the external `pricehist` tool to fetch data from various sources (Yahoo Finance, CoinMarketCap, ECB, etc.).
+The `fetch-currency-prices` tool fetches end-of-day currency exchange rates and updates the price journals in `ledger/currencies/`. It uses the external `pricehist` tool to fetch data from various sources (Yahoo Finance, CoinMarketCap, ECB, etc.).
 
 This tool is **restricted to the accountant agent only**.
 
@@ -135,9 +135,9 @@ When called by the wrong agent:
 **Example:**
 
 ```
-update-prices()
+fetch-currency-prices()
 # or
-update-prices(backfill: false)
+fetch-currency-prices(backfill: false)
 ```
 
 **Use when:**
@@ -159,7 +159,7 @@ update-prices(backfill: false)
 **Example:**
 
 ```
-update-prices(backfill: true)
+fetch-currency-prices(backfill: true)
 ```
 
 **Use when:**
@@ -342,7 +342,7 @@ ledger/
 
 **Goal:** Keep prices current with daily/weekly updates
 
-1. Run `update-prices()` (or `update-prices(backfill: false)`)
+1. Run `fetch-currency-prices()` (or `fetch-currency-prices(backfill: false)`)
 2. Check output for any errors
 3. Verify prices were added:
    ```bash
@@ -366,14 +366,14 @@ ledger/
        file: gbp.journal
        backfill_date: '2024-01-01'
    ```
-2. Run `update-prices(backfill: true)` to fetch historical data
+2. Run `fetch-currency-prices(backfill: true)` to fetch historical data
 3. Check output and verify `ledger/currencies/gbp.journal` created
 4. Inspect file to confirm date range:
    ```bash
    head -3 ledger/currencies/gbp.journal
    tail -3 ledger/currencies/gbp.journal
    ```
-5. Subsequent updates: use daily mode (`update-prices()`)
+5. Subsequent updates: use daily mode (`fetch-currency-prices()`)
 
 ### Scenario 3: Fixing Missing Dates
 
@@ -384,7 +384,7 @@ ledger/
    cat ledger/currencies/eur.journal
    # Notice: prices for Feb 15-20 are missing
    ```
-2. Run `update-prices(backfill: true)` to fill gaps
+2. Run `fetch-currency-prices(backfill: true)` to fill gaps
 3. Deduplication ensures:
    - Existing prices preserved
    - Missing dates added
@@ -398,7 +398,7 @@ ledger/
 
 **Goal:** Recover from partial failures
 
-1. Run `update-prices()`
+1. Run `fetch-currency-prices()`
 2. Output shows `success: false` with partial results:
    ```json
    {

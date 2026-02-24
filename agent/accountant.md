@@ -8,7 +8,7 @@ tools:
   bash: true
   edit: true
   write: true
-  # MCP tools available: import-pipeline, update-prices
+  # MCP tools available: import-pipeline, fetch-currency-prices
 permission:
   bash: allow
   edit: allow
@@ -59,7 +59,7 @@ You have access to specialized MCP tools that MUST be used for their designated 
 | Tool              | Use For                                              | NEVER Do Instead                                          |
 | ----------------- | ---------------------------------------------------- | --------------------------------------------------------- |
 | `import-pipeline` | Full import workflow (classify → import → reconcile) | Manual file moves, `hledger import`, manual journal edits |
-| `update-prices`   | Fetching exchange rates                              | `curl` to price APIs, manual price entries                |
+| `fetch-currency-prices`   | Fetching exchange rates                              | `curl` to price APIs, manual price entries                |
 
 These tools handle validation, deduplication, error checking, and file organization automatically. Bypassing them risks data corruption, duplicate transactions, and inconsistent state.
 
@@ -76,7 +76,7 @@ Bash is FORBIDDEN for:
 - `hledger import` - use `import-pipeline` tool instead
 - Moving/copying CSV files - use `import-pipeline` tool instead
 - Editing journal files directly - use `edit` tool only for rules files
-- Fetching prices - use `update-prices` tool instead
+- Fetching prices - use `fetch-currency-prices` tool instead
 
 ## Statement Import Workflow
 
@@ -158,14 +158,14 @@ The following are MCP tools available to you. Always call these tools directly -
 
 ---
 
-### update-prices
+### fetch-currency-prices
 
 **Purpose:** Fetches currency exchange rates and updates `ledger/currencies/` journals.
 
 **Usage:**
 
-- Daily mode (default): `update-prices()` or `update-prices(backfill: false)`
-- Backfill mode: `update-prices(backfill: true)`
+- Daily mode (default): `fetch-currency-prices()` or `fetch-currency-prices(backfill: false)`
+- Backfill mode: `fetch-currency-prices(backfill: true)`
 
 **Behavior:**
 

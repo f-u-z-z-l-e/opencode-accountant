@@ -16,7 +16,7 @@ An OpenCode accounting agent, specialized in double-entry-bookkepping with hledg
 
 ### Price Fetching Configuration
 
-The `update-prices` tool requires a configuration file to specify which currency pairs to fetch. Create a `config/prices.yaml` file in your project directory with the following structure:
+The `fetch-currency-prices` tool requires a configuration file to specify which currency pairs to fetch. Create a `config/prices.yaml` file in your project directory with the following structure:
 
 ```yaml
 currencies:
