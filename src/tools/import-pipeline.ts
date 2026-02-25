@@ -8,6 +8,7 @@ import { classifyStatements } from './classify-statements.ts';
 import { importStatements } from './import-statements.ts';
 import { reconcileStatement } from './reconcile-statement.ts';
 import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
+import { syncCSVFilesToWorktree, cleanupProcessedCSVFiles } from '../utils/fileUtils.ts';
 
 /**
  * Arguments for the import-pipeline tool
@@ -23,6 +24,14 @@ export interface ImportPipelineArgs {
   account?: string;
   /** Skip classify step if rules already exist */
   skipClassify?: boolean;
+}
+
+/**
+ * Details for CSV sync step result
+ */
+interface SyncStepDetails {
+  synced: string[];
+  errors?: Array<{ file: string; error: string }>;
 }
 
 /**
@@ -87,6 +96,10 @@ interface MergeStepDetails {
 interface CleanupStepDetails {
   cleanedAfterSuccess?: boolean;
   cleanedAfterFailure?: boolean;
+  csvCleanup?: {
+    deleted: string[];
+    errors?: Array<{ file: string; error: string }>;
+  };
 }
 
 /**
@@ -106,6 +119,7 @@ export interface ImportPipelineResult {
   worktreeId?: string;
   steps: {
     worktree?: StepResult;
+    sync?: StepResult<SyncStepDetails>;
     classify?: StepResult<ClassifyStepDetails>;
     dryRun?: StepResult<DryRunStepDetails>;
     import?: StepResult<ImportStepDetails>;
@@ -558,16 +572,97 @@ export async function importPipeline(
         branch: worktree.branch,
       });
 
+      // Sync CSV files from main repo to worktree
+      try {
+        const config = configLoader(directory);
+        const syncResult = syncCSVFilesToWorktree(directory, worktree.path, config.paths.import);
+
+        if (syncResult.synced.length === 0 && syncResult.errors.length === 0) {
+          result.steps.sync = buildStepResult<SyncStepDetails>(true, 'No CSV files to sync', {
+            synced: [],
+          });
+        } else if (syncResult.errors.length > 0) {
+          result.steps.sync = buildStepResult<SyncStepDetails>(
+            true,
+            `Synced ${syncResult.synced.length} file(s) with ${syncResult.errors.length} error(s)`,
+            { synced: syncResult.synced, errors: syncResult.errors }
+          );
+        } else {
+          result.steps.sync = buildStepResult<SyncStepDetails>(
+            true,
+            `Synced ${syncResult.synced.length} CSV file(s) to worktree`,
+            { synced: syncResult.synced }
+          );
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        result.steps.sync = buildStepResult<SyncStepDetails>(
+          false,
+          `Failed to sync CSV files: ${errorMsg}`,
+          { synced: [], errors: [{ file: 'unknown', error: errorMsg }] }
+        );
+      }
+
       try {
         await executeClassifyStep(context, worktree);
         await executeDryRunStep(context, worktree);
         await executeImportStep(context, worktree);
         await executeReconcileStep(context, worktree);
+
+        // Cleanup CSV files from main repo after successful reconciliation
+        try {
+          const config = configLoader(directory);
+          const cleanupResult = cleanupProcessedCSVFiles(directory, config.paths.import);
+
+          if (cleanupResult.deleted.length === 0 && cleanupResult.errors.length === 0) {
+            result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+              true,
+              'No CSV files to cleanup',
+              { csvCleanup: { deleted: [] } }
+            );
+          } else if (cleanupResult.errors.length > 0) {
+            result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+              true,
+              `Deleted ${cleanupResult.deleted.length} CSV file(s) with ${cleanupResult.errors.length} error(s)`,
+              {
+                csvCleanup: {
+                  deleted: cleanupResult.deleted,
+                  errors: cleanupResult.errors,
+                },
+              }
+            );
+          } else {
+            result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+              true,
+              `Deleted ${cleanupResult.deleted.length} CSV file(s) from main repo`,
+              { csvCleanup: { deleted: cleanupResult.deleted } }
+            );
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+            false,
+            `Failed to cleanup CSV files: ${errorMsg}`,
+            {
+              csvCleanup: {
+                deleted: [],
+                errors: [{ file: 'unknown', error: errorMsg }],
+              },
+            }
+          );
+        }
+
         await executeMergeStep(context, worktree);
 
-        result.steps.cleanup = buildStepResult<CleanupStepDetails>(true, 'Worktree cleaned up', {
-          cleanedAfterSuccess: true,
-        });
+        // Update cleanup step to include worktree cleanup status
+        const existingCleanup = result.steps.cleanup;
+        if (existingCleanup) {
+          existingCleanup.message += ', worktree cleaned up';
+          existingCleanup.details = {
+            ...existingCleanup.details,
+            cleanedAfterSuccess: true,
+          };
+        }
 
         const transactionCount =
           context.result.steps.import?.details?.summary?.totalTransactions || 0;
@@ -578,8 +673,11 @@ export async function importPipeline(
       } catch (error) {
         result.steps.cleanup = buildStepResult<CleanupStepDetails>(
           true,
-          'Worktree cleaned up after failure',
-          { cleanedAfterFailure: true }
+          'Worktree cleaned up after failure (CSV files preserved for retry)',
+          {
+            cleanedAfterFailure: true,
+            csvCleanup: { deleted: [] },
+          }
         );
 
         if (error instanceof NoTransactionsError) {

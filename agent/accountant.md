@@ -56,10 +56,10 @@ When working with accounting tasks:
 
 You have access to specialized MCP tools that MUST be used for their designated tasks. Do NOT attempt to replicate their functionality with bash commands, direct hledger CLI calls, or manual file edits.
 
-| Tool              | Use For                                              | NEVER Do Instead                                          |
-| ----------------- | ---------------------------------------------------- | --------------------------------------------------------- |
-| `import-pipeline` | Full import workflow (classify → import → reconcile) | Manual file moves, `hledger import`, manual journal edits |
-| `fetch-currency-prices`   | Fetching exchange rates                              | `curl` to price APIs, manual price entries                |
+| Tool                    | Use For                                              | NEVER Do Instead                                          |
+| ----------------------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| `import-pipeline`       | Full import workflow (classify → import → reconcile) | Manual file moves, `hledger import`, manual journal edits |
+| `fetch-currency-prices` | Fetching exchange rates                              | `curl` to price APIs, manual price entries                |
 
 These tools handle validation, deduplication, error checking, and file organization automatically. Bypassing them risks data corruption, duplicate transactions, and inconsistent state.
 
@@ -87,11 +87,13 @@ The `import-pipeline` tool provides an **atomic, safe workflow** using git workt
 1. **Prepare**: Drop CSV files into `{paths.import}` (configured in `config/import/providers.yaml`, default: `import/incoming`)
 2. **Run Pipeline**: Execute `import-pipeline` (optionally filter by `provider` and `currency`)
 3. **Automatic Processing**: The tool creates an isolated git worktree and:
+   - Syncs CSV files from main repo to worktree
    - Classifies CSV files by provider/currency
    - Validates all transactions have matching rules
    - Imports transactions to the appropriate year journal
    - Reconciles closing balance (if available in CSV metadata)
    - Merges changes back to main branch with `--no-ff`
+   - Deletes processed CSV files from main repo's import/incoming
    - Cleans up the worktree
 4. **Handle Failures**: If any step fails (e.g., unknown postings found):
    - Worktree is discarded, main branch remains untouched
@@ -134,12 +136,14 @@ The following are MCP tools available to you. Always call these tools directly -
 **Behavior:**
 
 1. Creates isolated git worktree
-2. Classifies CSV files (unless `skipClassify: true`)
-3. Validates all transactions have matching rules (dry run)
-4. Imports transactions to year journal
-5. Reconciles closing balance against CSV metadata or manual value
-6. Merges to main with `--no-ff` commit
-7. Cleans up worktree
+2. Syncs CSV files from main repo to worktree
+3. Classifies CSV files (unless `skipClassify: true`)
+4. Validates all transactions have matching rules (dry run)
+5. Imports transactions to year journal
+6. Reconciles closing balance against CSV metadata or manual value
+7. Merges to main with `--no-ff` commit
+8. Deletes processed CSV files from main repo's import/incoming
+9. Cleans up worktree
 
 **Output:** Returns step-by-step results with success/failure for each phase
 

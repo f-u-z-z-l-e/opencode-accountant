@@ -199,13 +199,15 @@ The `import-pipeline` tool provides an atomic, safe import workflow using git wo
 2. Run `import-pipeline` tool with optional provider/currency filters
 3. The tool automatically:
    - Creates an isolated git worktree
+   - Syncs CSV files from main repo to worktree
    - Classifies CSV files by provider/currency
    - Validates all transactions have matching rules
    - Imports transactions to the appropriate year journal
    - Reconciles closing balance (if available in CSV metadata)
    - Merges changes back to main branch with `--no-ff`
+   - Deletes processed CSV files from main repo's import/incoming
    - Cleans up the worktree
-4. If any step fails, the worktree is discarded and main branch remains untouched
+4. If any step fails, the worktree is discarded and main branch remains untouched (CSV files are preserved for retry)
 
 ### Statement Import
 
