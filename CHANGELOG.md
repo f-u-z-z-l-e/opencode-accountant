@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.1.3...v0.2.0) (2026-02-25)
+
+
+### Features
+
+* add CSV file lifecycle management for worktree-based imports ([f4b95d2](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/f4b95d21507962b4bd7bc5b352fec05a45a399de))
+
 ## [0.1.3](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.1.2...v0.1.3) (2026-02-25)
 
 
