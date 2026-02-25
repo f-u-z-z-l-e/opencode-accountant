@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.2](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.1.1...v0.1.2) (2026-02-25)
+
+
+### Bug Fixes
+
+* add import-pipeline tool ([dfe39af](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/dfe39afeb7a9ceca721f21e6d53ff950bf40cf6c))
+* eliminate warnings ([2f1167a](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/2f1167a7c0e8530f8a3d90caa2fd0a4eb843f973))
+* export function name ([f34fd22](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/f34fd2202e259c82766f8f007dfa5c0525927260))
+* lint ([126aaa8](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/126aaa85225927f91b0a93c30ffa27f19f468d5f))
+* refactor import-pipeline ([2b4f10c](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/2b4f10c85cea0f94b6e88f48387646179f31134a))
+
 ## [0.1.1](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.1.0...v0.1.1) (2026-02-24)
 
 
