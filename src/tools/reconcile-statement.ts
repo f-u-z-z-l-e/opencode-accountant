@@ -307,24 +307,14 @@ function determineAccount(
 }
 
 /**
- * Core implementation of the reconcile-statement tool
- *
- * This function performs the following steps:
- * 1. Validates the directory is an import worktree
- * 2. Finds the most recently imported CSV file
- * 3. Determines the expected closing balance (from CSV or manual override)
- * 4. Determines the account (from rules file or manual override)
- * 5. Queries hledger for the actual balance as of the last transaction
- * 6. Compares expected vs actual balance
+ * Implementation of the reconcile-statement tool
  */
-export async function reconcileStatementCore(
+export async function reconcileStatement(
   directory: string,
   agent: string,
   options: ReconcileStatementsArgs,
-
   configLoader: (configDir: string) => ImportConfig = loadImportConfig,
   hledgerExecutor: HledgerExecutor = defaultHledgerExecutor,
-
   worktreeChecker: (dir: string) => boolean = isInWorktree
 ): Promise<string> {
   // 1. Agent restriction
@@ -502,7 +492,7 @@ It must be run inside an import worktree (use import-pipeline for the full workf
   },
   async execute(params, context) {
     const { directory, agent } = context;
-    return reconcileStatementCore(directory, agent, {
+    return reconcileStatement(directory, agent, {
       provider: params.provider,
       currency: params.currency,
       closingBalance: params.closingBalance,

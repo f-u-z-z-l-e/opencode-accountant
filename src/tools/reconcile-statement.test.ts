@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconcileStatementCore } from './reconcile-statement.ts';
+import { reconcileStatement } from './reconcile-statement.ts';
 import type { HledgerExecutor } from '../utils/hledgerExecutor.ts';
 import type { ImportConfig } from '../utils/importConfig.ts';
 
@@ -46,7 +46,7 @@ describe('reconcile-statement tool', () => {
 
   describe('worktree enforcement', () => {
     it('should reject execution outside worktree', async () => {
-      const result = await reconcileStatementCore(
+      const result = await reconcileStatement(
         '/test/dir',
         'accountant',
         {},
@@ -61,7 +61,7 @@ describe('reconcile-statement tool', () => {
     });
 
     it('should allow execution inside worktree', async () => {
-      const result = await reconcileStatementCore(
+      const result = await reconcileStatement(
         '/test/dir',
         'accountant',
         {},
@@ -78,7 +78,7 @@ describe('reconcile-statement tool', () => {
 
   describe('agent restriction', () => {
     it('should reject non-accountant agent', async () => {
-      const result = await reconcileStatementCore(
+      const result = await reconcileStatement(
         '/test/dir',
         'developer',
         {},
@@ -94,7 +94,7 @@ describe('reconcile-statement tool', () => {
 
   describe('closing balance detection', () => {
     it('should use manually provided closing balance', async () => {
-      const result = await reconcileStatementCore(
+      const result = await reconcileStatement(
         '/test/dir',
         'accountant',
         { closingBalance: '1234.56' },
@@ -114,7 +114,7 @@ describe('reconcile-statement tool', () => {
 
   describe('result structure', () => {
     it('should return proper error structure when no CSV found', async () => {
-      const result = await reconcileStatementCore(
+      const result = await reconcileStatement(
         '/test/dir',
         'accountant',
         {},

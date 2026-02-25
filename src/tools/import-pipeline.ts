@@ -4,7 +4,7 @@ import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
 import { mergeWorktree, withWorktree, type WorktreeContext } from '../utils/worktreeManager.ts';
 import { classifyStatements } from './classify-statements.ts';
 import { importStatements } from './import-statements.ts';
-import { reconcileStatementCore } from './reconcile-statement.ts';
+import { reconcileStatement } from './reconcile-statement.ts';
 import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
 
 /**
@@ -369,7 +369,7 @@ export async function executeReconcileStep(
   worktree: WorktreeContext
 ): Promise<void> {
   const inWorktree = (): boolean => true;
-  const reconcileResult = await reconcileStatementCore(
+  const reconcileResult = await reconcileStatement(
     worktree.path,
     context.agent,
     {
@@ -463,9 +463,9 @@ function handleNoTransactions(result: ImportPipelineResult): string {
 }
 
 /**
- * Core implementation of the import-pipeline tool
+ * Implementation of the import-pipeline tool
  */
-export async function importPipelineCore(
+export async function importPipeline(
   directory: string,
   agent: string,
   options: ImportPipelineArgs,
@@ -592,7 +592,7 @@ This tool orchestrates the full import workflow in an isolated git worktree:
   },
   async execute(params, context) {
     const { directory, agent } = context;
-    return importPipelineCore(directory, agent, {
+    return importPipeline(directory, agent, {
       provider: params.provider,
       currency: params.currency,
       closingBalance: params.closingBalance,

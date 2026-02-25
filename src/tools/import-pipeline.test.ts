@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import {
-  importPipelineCore,
+  importPipeline,
   extractFromJsonResult,
   extractCommitInfo,
   extractTransactionCount,
@@ -103,7 +103,7 @@ describe('import-pipeline tool', () => {
 
   describe('agent restriction', () => {
     it('should reject non-accountant agents', async () => {
-      const result = await importPipelineCore(testRepoPath, 'other-agent', {}, mockConfigLoader);
+      const result = await importPipeline(testRepoPath, 'other-agent', {}, mockConfigLoader);
 
       expect(result).toContain('restricted to the accountant agent');
     });
@@ -112,7 +112,7 @@ describe('import-pipeline tool', () => {
   describe('worktree creation', () => {
     it('should create a worktree at the start', async () => {
       // This will fail later in the pipeline but should create worktree
-      const result = await importPipelineCore(testRepoPath, 'accountant', {}, mockConfigLoader);
+      const result = await importPipeline(testRepoPath, 'accountant', {}, mockConfigLoader);
 
       const parsed = JSON.parse(result);
       expect(parsed.worktreeId).toBeDefined();
@@ -120,7 +120,7 @@ describe('import-pipeline tool', () => {
     });
 
     it('should clean up worktree on failure', async () => {
-      const result = await importPipelineCore(testRepoPath, 'accountant', {}, mockConfigLoader);
+      const result = await importPipeline(testRepoPath, 'accountant', {}, mockConfigLoader);
 
       const parsed = JSON.parse(result);
       expect(parsed.steps.cleanup?.success).toBe(true);
@@ -142,7 +142,7 @@ describe('import-pipeline tool', () => {
         new Map([['print', { stdout: '', stderr: '', exitCode: 0 }]])
       );
 
-      const result = await importPipelineCore(
+      const result = await importPipeline(
         testRepoPath,
         'accountant',
         {},
@@ -158,7 +158,7 @@ describe('import-pipeline tool', () => {
 
   describe('skipClassify option', () => {
     it('should skip classify step when skipClassify is true', async () => {
-      const result = await importPipelineCore(
+      const result = await importPipeline(
         testRepoPath,
         'accountant',
         { skipClassify: true },
@@ -173,7 +173,7 @@ describe('import-pipeline tool', () => {
 
   describe('result structure', () => {
     it('should return proper result structure', async () => {
-      const result = await importPipelineCore(testRepoPath, 'accountant', {}, mockConfigLoader);
+      const result = await importPipeline(testRepoPath, 'accountant', {}, mockConfigLoader);
 
       const parsed = JSON.parse(result);
 
@@ -188,7 +188,7 @@ describe('import-pipeline tool', () => {
 
     it('should include error details in result structure', async () => {
       // Test agent restriction error (simpler to trigger than import failure)
-      const result = await importPipelineCore(
+      const result = await importPipeline(
         testRepoPath,
         'wrong-agent',
         { skipClassify: true },
@@ -205,7 +205,7 @@ describe('import-pipeline tool', () => {
     it('should build proper commit message with provider and currency', async () => {
       // This is a unit test for the commit message building logic
       // We test the full pipeline in integration tests
-      const result = await importPipelineCore(
+      const result = await importPipeline(
         testRepoPath,
         'accountant',
         { provider: 'ubs', currency: 'chf' },
