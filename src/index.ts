@@ -7,6 +7,7 @@ import {
   classifyStatements,
   importStatements,
   reconcileStatement,
+  importPipeline,
 } from './tools/index.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -21,6 +22,7 @@ const AccountantPlugin: Plugin = async () => {
       'classify-statements': classifyStatements,
       'import-statements': importStatements,
       'reconcile-statements': reconcileStatement,
+      'import-piprline': importPipeline,
     },
     config: async (config: Record<string, unknown>): Promise<void> => {
       if (agent) {
