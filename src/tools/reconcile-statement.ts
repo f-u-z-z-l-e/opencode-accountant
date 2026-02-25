@@ -235,10 +235,11 @@ function determineClosingBalance(
   let closingBalance = options.closingBalance;
 
   if (!closingBalance && metadata?.closing_balance) {
-    closingBalance = metadata.closing_balance;
+    const { closing_balance, currency } = metadata;
+    closingBalance = closing_balance;
     // Add currency if not present and metadata has it
-    if (metadata.currency && !closingBalance.includes(metadata.currency)) {
-      closingBalance = `${metadata.currency} ${closingBalance}`;
+    if (currency && !closingBalance.includes(currency)) {
+      closingBalance = `${currency} ${closingBalance}`;
     }
   }
 
