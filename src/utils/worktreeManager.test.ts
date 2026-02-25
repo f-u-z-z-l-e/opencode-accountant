@@ -10,6 +10,7 @@ import {
   isInWorktree,
   getMainRepoPath,
   listImportWorktrees,
+  withWorktree,
   type WorktreeContext,
 } from './worktreeManager.ts';
 
@@ -292,6 +293,81 @@ describe('worktreeManager', () => {
         execSync(`git worktree remove ${otherPath} --force`, { cwd: testRepoPath });
         execSync('git branch -D feature-branch', { cwd: testRepoPath });
       }
+    });
+  });
+
+  describe('withWorktree', () => {
+    it('should create and cleanup worktree on success', async () => {
+      const result = await withWorktree(testRepoPath, async (worktree) => {
+        expect(worktree.path).toBeDefined();
+        expect(worktree.uuid).toBeDefined();
+        expect(worktree.branch).toMatch(/^import-/);
+        expect(fs.existsSync(worktree.path)).toBe(true);
+        return 'success';
+      });
+
+      expect(result).toBe('success');
+
+      // Verify cleanup happened
+      const worktrees = listImportWorktrees(testRepoPath);
+      expect(worktrees).toHaveLength(0);
+    });
+
+    it('should cleanup worktree on operation failure', async () => {
+      await expect(
+        withWorktree(testRepoPath, async () => {
+          throw new Error('Operation failed');
+        })
+      ).rejects.toThrow('Operation failed');
+
+      // Verify cleanup happened
+      const worktrees = listImportWorktrees(testRepoPath);
+      expect(worktrees).toHaveLength(0);
+    });
+
+    it('should allow operations to modify files in worktree', async () => {
+      const result = await withWorktree(testRepoPath, async (worktree) => {
+        const testFile = path.join(worktree.path, 'test.txt');
+        fs.writeFileSync(testFile, 'test content');
+        expect(fs.existsSync(testFile)).toBe(true);
+        return fs.readFileSync(testFile, 'utf-8');
+      });
+
+      expect(result).toBe('test content');
+
+      // Verify cleanup happened
+      const worktrees = listImportWorktrees(testRepoPath);
+      expect(worktrees).toHaveLength(0);
+    });
+
+    it('should cleanup even if operation throws non-Error', async () => {
+      await expect(
+        withWorktree(testRepoPath, async () => {
+          throw new Error('Operation failed with string');
+        })
+      ).rejects.toThrow('Operation failed with string');
+
+      // Verify cleanup happened
+      const worktrees = listImportWorktrees(testRepoPath);
+      expect(worktrees).toHaveLength(0);
+    });
+
+    it('should return value from operation', async () => {
+      const complexResult = await withWorktree(testRepoPath, async (worktree) => {
+        return {
+          path: worktree.path,
+          uuid: worktree.uuid,
+          customData: { foo: 'bar', count: 42 },
+        };
+      });
+
+      expect(complexResult.uuid).toBeDefined();
+      expect(complexResult.customData.foo).toBe('bar');
+      expect(complexResult.customData.count).toBe(42);
+
+      // Verify cleanup happened
+      const worktrees = listImportWorktrees(testRepoPath);
+      expect(worktrees).toHaveLength(0);
     });
   });
 });

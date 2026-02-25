@@ -272,3 +272,33 @@ export function listImportWorktrees(repoPath: string): WorktreeContext[] {
     return [];
   }
 }
+
+/**
+ * Executes an operation within a worktree, guaranteeing cleanup.
+ *
+ * This higher-order function ensures that:
+ * 1. A worktree is created before the operation
+ * 2. The operation runs in isolation
+ * 3. The worktree is cleaned up regardless of success or failure
+ *
+ * @param directory Main repository directory
+ * @param operation Function to execute in the worktree context
+ * @returns The operation's return value
+ * @throws Error from operation or worktree creation
+ */
+export async function withWorktree<T>(
+  directory: string,
+  operation: (worktree: WorktreeContext) => Promise<T>
+): Promise<T> {
+  let createdWorktree: WorktreeContext | null = null;
+
+  try {
+    createdWorktree = createImportWorktree(directory);
+    const result = await operation(createdWorktree);
+    return result;
+  } finally {
+    if (createdWorktree) {
+      removeWorktree(createdWorktree, true);
+    }
+  }
+}

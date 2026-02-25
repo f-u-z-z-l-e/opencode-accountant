@@ -3,7 +3,14 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { importPipelineCore } from './import-pipeline.ts';
+import {
+  importPipelineCore,
+  extractFromJsonResult,
+  extractCommitInfo,
+  extractTransactionCount,
+  buildCommitMessage,
+  NoTransactionsError,
+} from './import-pipeline.ts';
 import type { HledgerExecutor, HledgerResult } from '../utils/hledgerExecutor.ts';
 import type { ImportConfig } from '../utils/importConfig.ts';
 
@@ -208,6 +215,113 @@ describe('import-pipeline tool', () => {
       // Even if pipeline fails, we can check the structure
       const parsed = JSON.parse(result);
       expect(parsed).toBeDefined();
+    });
+  });
+});
+
+describe('utility functions', () => {
+  describe('extractFromJsonResult', () => {
+    it('should extract data using custom extractor', () => {
+      const json = '{"metadata": {"from_date": "2024-01-01"}}';
+      const result = extractFromJsonResult(
+        json,
+        (parsed: unknown) => {
+          const data = parsed as { metadata?: { from_date?: string } };
+          return data.metadata?.from_date || '';
+        },
+        'default'
+      );
+      expect(result).toBe('2024-01-01');
+    });
+
+    it('should return default on parse error', () => {
+      const result = extractFromJsonResult('invalid json', () => 'extracted', 'default');
+      expect(result).toBe('default');
+    });
+
+    it('should return default on extractor error', () => {
+      const result = extractFromJsonResult<string>(
+        '{"data": "value"}',
+        () => {
+          throw new Error('Extractor failed');
+        },
+        'default'
+      );
+      expect(result).toBe('default');
+    });
+  });
+
+  describe('extractCommitInfo', () => {
+    it('should extract commit info from reconcile result', () => {
+      const json = JSON.stringify({
+        metadata: {
+          from_date: '2024-01-01',
+          until_date: '2024-01-31',
+        },
+      });
+      const result = extractCommitInfo(json);
+      expect(result.fromDate).toBe('2024-01-01');
+      expect(result.untilDate).toBe('2024-01-31');
+    });
+
+    it('should return empty object on invalid JSON', () => {
+      const result = extractCommitInfo('invalid');
+      expect(result.fromDate).toBeUndefined();
+      expect(result.untilDate).toBeUndefined();
+    });
+  });
+
+  describe('extractTransactionCount', () => {
+    it('should extract transaction count from import result', () => {
+      const json = JSON.stringify({ summary: { totalTransactions: 42 } });
+      const result = extractTransactionCount(json);
+      expect(result).toBe(42);
+    });
+
+    it('should return 0 on invalid JSON', () => {
+      const result = extractTransactionCount('invalid');
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 when summary is missing', () => {
+      const result = extractTransactionCount('{}');
+      expect(result).toBe(0);
+    });
+  });
+
+  describe('buildCommitMessage', () => {
+    it('should format provider and currency', () => {
+      const msg = buildCommitMessage('ubs', 'chf', undefined, undefined, 0);
+      expect(msg).toBe('Import: UBS CHF');
+    });
+
+    it('should include date range when provided', () => {
+      const msg = buildCommitMessage('ubs', 'chf', '2024-01-01', '2024-01-31', 5);
+      expect(msg).toBe('Import: UBS CHF 2024-01-01 to 2024-01-31 (5 transactions)');
+    });
+
+    it('should handle missing provider and currency', () => {
+      const msg = buildCommitMessage(undefined, undefined, '2024-01-01', '2024-01-31', 10);
+      expect(msg).toBe('Import: statements 2024-01-01 to 2024-01-31 (10 transactions)');
+    });
+
+    it('should handle zero transactions', () => {
+      const msg = buildCommitMessage('ubs', 'chf', undefined, undefined, 0);
+      expect(msg).toBe('Import: UBS CHF');
+    });
+  });
+
+  describe('NoTransactionsError', () => {
+    it('should be throwable and catchable', () => {
+      expect(() => {
+        throw new NoTransactionsError();
+      }).toThrow('No transactions to import');
+    });
+
+    it('should be instanceof Error', () => {
+      const error = new NoTransactionsError();
+      expect(error instanceof Error).toBe(true);
+      expect(error instanceof NoTransactionsError).toBe(true);
     });
   });
 });

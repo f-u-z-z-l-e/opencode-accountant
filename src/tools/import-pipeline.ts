@@ -1,12 +1,7 @@
 import { tool } from '@opencode-ai/plugin';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
-import {
-  createImportWorktree,
-  mergeWorktree,
-  removeWorktree,
-  type WorktreeContext,
-} from '../utils/worktreeManager.ts';
+import { mergeWorktree, withWorktree, type WorktreeContext } from '../utils/worktreeManager.ts';
 import { classifyStatements } from './classify-statements.ts';
 import { importStatements } from './import-statements.ts';
 import { reconcileStatementCore } from './reconcile-statement.ts';
@@ -15,7 +10,7 @@ import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerEx
 /**
  * Arguments for the import-pipeline tool
  */
-interface ImportPipelineArgs {
+export interface ImportPipelineArgs {
   /** Filter by provider (e.g., "ubs", "revolut") */
   provider?: string;
   /** Filter by currency (e.g., "chf", "eur") */
@@ -29,28 +24,88 @@ interface ImportPipelineArgs {
 }
 
 /**
+ * Details for classify step result
+ */
+interface ClassifyStepDetails {
+  success: boolean;
+  unrecognized?: string[];
+  classified?: unknown;
+}
+
+/**
+ * Details for dry run step result
+ */
+interface DryRunStepDetails {
+  success: boolean;
+  summary?: {
+    totalTransactions: number;
+    unknown?: number;
+  };
+}
+
+/**
+ * Details for import step result
+ */
+interface ImportStepDetails {
+  success: boolean;
+  summary?: {
+    totalTransactions: number;
+  };
+  error?: string;
+}
+
+/**
+ * Details for reconcile step result
+ */
+interface ReconcileStepDetails {
+  success: boolean;
+  actualBalance?: string;
+  expectedBalance?: string;
+  metadata?: {
+    from_date?: string;
+    until_date?: string;
+  };
+  error?: string;
+}
+
+/**
+ * Details for merge step result
+ */
+interface MergeStepDetails {
+  commitMessage: string;
+}
+
+/**
+ * Details for cleanup step result
+ */
+interface CleanupStepDetails {
+  cleanedAfterSuccess?: boolean;
+  cleanedAfterFailure?: boolean;
+}
+
+/**
  * Result of a single pipeline step
  */
-interface StepResult {
+interface StepResult<T = unknown> {
   success: boolean;
   message: string;
-  details?: unknown;
+  details?: T;
 }
 
 /**
  * Overall result of the import-pipeline tool
  */
-interface ImportPipelineResult {
+export interface ImportPipelineResult {
   success: boolean;
   worktreeId?: string;
   steps: {
     worktree?: StepResult;
-    classify?: StepResult;
-    dryRun?: StepResult;
-    import?: StepResult;
-    reconcile?: StepResult;
-    merge?: StepResult;
-    cleanup?: StepResult;
+    classify?: StepResult<ClassifyStepDetails>;
+    dryRun?: StepResult<DryRunStepDetails>;
+    import?: StepResult<ImportStepDetails>;
+    reconcile?: StepResult<ReconcileStepDetails>;
+    merge?: StepResult<MergeStepDetails>;
+    cleanup?: StepResult<CleanupStepDetails>;
   };
   summary?: string;
   error?: string;
@@ -58,41 +113,113 @@ interface ImportPipelineResult {
 }
 
 /**
+ * Pipeline execution context
+ */
+export interface PipelineContext {
+  directory: string;
+  agent: string;
+  options: ImportPipelineArgs;
+  configLoader: (_configDir: string) => ImportConfig;
+  hledgerExecutor: HledgerExecutor;
+  result: ImportPipelineResult;
+}
+
+/**
+ * Custom error for no transactions scenario
+ */
+export class NoTransactionsError extends Error {
+  constructor() {
+    super('No transactions to import');
+    this.name = 'NoTransactionsError';
+  }
+}
+
+/**
+ * Builds a step result with typed details
+ */
+function buildStepResult<T>(success: boolean, message: string, details?: T): StepResult<T> {
+  const result: StepResult<T> = { success, message };
+  if (details !== undefined) {
+    result.details = details;
+  }
+  return result;
+}
+
+/**
+ * Builds a success result
+ */
+function buildSuccessResult(result: ImportPipelineResult, summary: string): string {
+  result.success = true;
+  result.summary = summary;
+  return JSON.stringify(result);
+}
+
+/**
+ * Builds an error result
+ */
+function buildErrorResult(result: ImportPipelineResult, error: string, hint?: string): string {
+  result.success = false;
+  result.error = error;
+  if (hint) {
+    result.hint = hint;
+  }
+  return JSON.stringify(result);
+}
+
+/**
+ * Generic JSON result extractor
+ */
+export function extractFromJsonResult<T>(
+  jsonString: string,
+  extractor: (parsed: unknown) => T,
+  defaultValue: T
+): T {
+  try {
+    const parsed = JSON.parse(jsonString);
+    return extractor(parsed);
+  } catch {
+    return defaultValue;
+  }
+}
+
+/**
  * Extracts metadata from reconcile result for commit message
  */
-function extractCommitInfo(reconcileResult: string): {
+export function extractCommitInfo(reconcileResult: string): {
   fromDate?: string;
   untilDate?: string;
-  transactionCount?: number;
 } {
-  try {
-    const parsed = JSON.parse(reconcileResult);
-    return {
-      fromDate: parsed.metadata?.from_date,
-      untilDate: parsed.metadata?.until_date,
-      transactionCount: undefined, // Will get from import result
-    };
-  } catch {
-    return {};
-  }
+  return extractFromJsonResult<{ fromDate?: string; untilDate?: string }>(
+    reconcileResult,
+    (parsed: unknown) => {
+      const data = parsed as { metadata?: { from_date?: string; until_date?: string } };
+      return {
+        fromDate: data.metadata?.from_date,
+        untilDate: data.metadata?.until_date,
+      };
+    },
+    { fromDate: undefined, untilDate: undefined }
+  );
 }
 
 /**
  * Extracts transaction count from import result
  */
-function extractTransactionCount(importResult: string): number {
-  try {
-    const parsed = JSON.parse(importResult);
-    return parsed.summary?.totalTransactions || 0;
-  } catch {
-    return 0;
-  }
+export function extractTransactionCount(importResult: string): number {
+  return extractFromJsonResult(
+    importResult,
+    (parsed: unknown) => {
+      const data = parsed as { summary?: { totalTransactions?: number } };
+      return data.summary?.totalTransactions || 0;
+    },
+    0
+  );
 }
 
 /**
  * Builds a commit message from import metadata
  */
-function buildCommitMessage(
+export function buildCommitMessage(
   provider: string | undefined,
   currency: string | undefined,
   fromDate: string | undefined,
@@ -100,11 +227,239 @@ function buildCommitMessage(
   transactionCount: number
 ): string {
   const providerStr = provider?.toUpperCase() || 'statements';
-  const currencyStr = currency?.toUpperCase() || '';
+  const currencyStr = currency?.toUpperCase();
   const dateRange = fromDate && untilDate ? ` ${fromDate} to ${untilDate}` : '';
   const txStr = transactionCount > 0 ? ` (${transactionCount} transactions)` : '';
 
-  return `Import: ${providerStr} ${currencyStr}${dateRange}${txStr}`.trim();
+  const parts = ['Import:', providerStr];
+  if (currencyStr) {
+    parts.push(currencyStr);
+  }
+
+  return `${parts.join(' ')}${dateRange}${txStr}`;
+}
+
+/**
+ * Executes the classify step
+ */
+export async function executeClassifyStep(
+  context: PipelineContext,
+  worktree: WorktreeContext
+): Promise<void> {
+  if (context.options.skipClassify) {
+    context.result.steps.classify = buildStepResult(
+      true,
+      'Classification skipped (skipClassify: true)'
+    );
+    return;
+  }
+
+  const inWorktree = (): boolean => true;
+  const classifyResult = await classifyStatements(
+    worktree.path,
+    context.agent,
+    context.configLoader,
+    inWorktree
+  );
+
+  const classifyParsed = JSON.parse(classifyResult);
+  const success = classifyParsed.success !== false;
+
+  let message = success ? 'Classification complete' : 'Classification had issues';
+
+  if (classifyParsed.unrecognized?.length > 0) {
+    message = `Classification complete with ${classifyParsed.unrecognized.length} unrecognized file(s)`;
+  }
+
+  const details: ClassifyStepDetails = {
+    success,
+    unrecognized: classifyParsed.unrecognized,
+    classified: classifyParsed,
+  };
+
+  context.result.steps.classify = buildStepResult<ClassifyStepDetails>(success, message, details);
+}
+
+/**
+ * Executes the dry run step
+ */
+export async function executeDryRunStep(
+  context: PipelineContext,
+  worktree: WorktreeContext
+): Promise<void> {
+  const inWorktree = (): boolean => true;
+  const dryRunResult = await importStatements(
+    worktree.path,
+    context.agent,
+    {
+      provider: context.options.provider,
+      currency: context.options.currency,
+      checkOnly: true,
+    },
+    context.configLoader,
+    context.hledgerExecutor,
+    inWorktree
+  );
+
+  const dryRunParsed = JSON.parse(dryRunResult);
+  const message = dryRunParsed.success
+    ? `Dry run passed: ${dryRunParsed.summary?.totalTransactions || 0} transactions ready`
+    : `Dry run failed: ${dryRunParsed.summary?.unknown || 0} unknown account(s)`;
+
+  context.result.steps.dryRun = buildStepResult<DryRunStepDetails>(dryRunParsed.success, message, {
+    success: dryRunParsed.success,
+    summary: dryRunParsed.summary,
+  });
+
+  if (!dryRunParsed.success) {
+    context.result.error = 'Dry run found unknown accounts or errors';
+    context.result.hint = 'Add rules to categorize unknown transactions, then retry';
+    throw new Error('Dry run failed');
+  }
+
+  // Early exit if no transactions
+  if (dryRunParsed.summary?.totalTransactions === 0) {
+    throw new NoTransactionsError();
+  }
+}
+
+/**
+ * Executes the import step
+ */
+export async function executeImportStep(
+  context: PipelineContext,
+  worktree: WorktreeContext
+): Promise<void> {
+  const inWorktree = (): boolean => true;
+  const importResult = await importStatements(
+    worktree.path,
+    context.agent,
+    {
+      provider: context.options.provider,
+      currency: context.options.currency,
+      checkOnly: false,
+    },
+    context.configLoader,
+    context.hledgerExecutor,
+    inWorktree
+  );
+
+  const importParsed = JSON.parse(importResult);
+  const message = importParsed.success
+    ? `Imported ${importParsed.summary?.totalTransactions || 0} transactions`
+    : `Import failed: ${importParsed.error || 'Unknown error'}`;
+
+  context.result.steps.import = buildStepResult<ImportStepDetails>(importParsed.success, message, {
+    success: importParsed.success,
+    summary: importParsed.summary,
+    error: importParsed.error,
+  });
+
+  if (!importParsed.success) {
+    context.result.error = `Import failed: ${importParsed.error || 'Unknown error'}`;
+    throw new Error('Import failed');
+  }
+}
+
+/**
+ * Executes the reconcile step
+ */
+export async function executeReconcileStep(
+  context: PipelineContext,
+  worktree: WorktreeContext
+): Promise<void> {
+  const inWorktree = (): boolean => true;
+  const reconcileResult = await reconcileStatementCore(
+    worktree.path,
+    context.agent,
+    {
+      provider: context.options.provider,
+      currency: context.options.currency,
+      closingBalance: context.options.closingBalance,
+      account: context.options.account,
+    },
+    context.configLoader,
+    context.hledgerExecutor,
+    inWorktree
+  );
+
+  const reconcileParsed = JSON.parse(reconcileResult);
+  const message = reconcileParsed.success
+    ? `Balance reconciled: ${reconcileParsed.actualBalance}`
+    : `Balance mismatch: expected ${reconcileParsed.expectedBalance}, got ${reconcileParsed.actualBalance}`;
+
+  context.result.steps.reconcile = buildStepResult<ReconcileStepDetails>(
+    reconcileParsed.success,
+    message,
+    {
+      success: reconcileParsed.success,
+      actualBalance: reconcileParsed.actualBalance,
+      expectedBalance: reconcileParsed.expectedBalance,
+      metadata: reconcileParsed.metadata,
+      error: reconcileParsed.error,
+    }
+  );
+
+  if (!reconcileParsed.success) {
+    context.result.error = `Reconciliation failed: ${reconcileParsed.error || 'Balance mismatch'}`;
+    context.result.hint = 'Check for missing transactions or incorrect rules';
+    throw new Error('Reconciliation failed');
+  }
+}
+
+/**
+ * Executes the merge step
+ */
+export async function executeMergeStep(
+  context: PipelineContext,
+  worktree: WorktreeContext
+): Promise<void> {
+  const importDetails = context.result.steps.import?.details;
+  const reconcileDetails = context.result.steps.reconcile?.details;
+
+  if (!importDetails || !reconcileDetails) {
+    throw new Error('Import or reconcile step not completed before merge');
+  }
+
+  const commitInfo = {
+    fromDate: reconcileDetails.metadata?.from_date,
+    untilDate: reconcileDetails.metadata?.until_date,
+  };
+  const transactionCount = importDetails.summary?.totalTransactions || 0;
+
+  const commitMessage = buildCommitMessage(
+    context.options.provider,
+    context.options.currency,
+    commitInfo.fromDate,
+    commitInfo.untilDate,
+    transactionCount
+  );
+
+  try {
+    mergeWorktree(worktree, commitMessage);
+    const mergeDetails: MergeStepDetails = { commitMessage };
+    context.result.steps.merge = buildStepResult<MergeStepDetails>(
+      true,
+      `Merged to main: "${commitMessage}"`,
+      mergeDetails
+    );
+  } catch (error) {
+    const message = `Merge failed: ${error instanceof Error ? error.message : String(error)}`;
+    context.result.steps.merge = buildStepResult(false, message);
+    context.result.error = 'Merge to main branch failed';
+    throw new Error('Merge failed');
+  }
+}
+
+/**
+ * Handles the no transactions scenario
+ */
+function handleNoTransactions(result: ImportPipelineResult): string {
+  result.steps.import = buildStepResult(true, 'No transactions to import');
+  result.steps.reconcile = buildStepResult(true, 'Reconciliation skipped (no transactions)');
+  result.steps.merge = buildStepResult(true, 'Merge skipped (no changes)');
+
+  return buildSuccessResult(result, 'No transactions found to import');
 }
 
 /**
@@ -114,11 +469,10 @@ export async function importPipelineCore(
   directory: string,
   agent: string,
   options: ImportPipelineArgs,
-  // eslint-disable-next-line no-unused-vars
-  configLoader: (configDir: string) => ImportConfig = loadImportConfig,
+  configLoader: (_configDir: string) => ImportConfig = loadImportConfig,
   hledgerExecutor: HledgerExecutor = defaultHledgerExecutor
 ): Promise<string> {
-  // Agent restriction
+  // Early return for agent restriction
   const restrictionError = checkAccountantAgent(agent, 'import pipeline');
   if (restrictionError) {
     return restrictionError;
@@ -129,244 +483,66 @@ export async function importPipelineCore(
     steps: {},
   };
 
-  let worktree: WorktreeContext | null = null;
+  const context: PipelineContext = {
+    directory,
+    agent,
+    options,
+    configLoader,
+    hledgerExecutor,
+    result,
+  };
 
   try {
-    // Step 1: Create worktree
-    try {
-      worktree = createImportWorktree(directory);
+    return await withWorktree(directory, async (worktree) => {
       result.worktreeId = worktree.uuid;
-      result.steps.worktree = {
-        success: true,
-        message: `Created worktree at ${worktree.path}`,
-        details: { path: worktree.path, branch: worktree.branch },
-      };
-    } catch (error) {
-      result.steps.worktree = {
-        success: false,
-        message: `Failed to create worktree: ${error instanceof Error ? error.message : String(error)}`,
-      };
-      throw new Error('Failed to create worktree');
-    }
+      result.steps.worktree = buildStepResult(true, `Created worktree at ${worktree.path}`, {
+        path: worktree.path,
+        branch: worktree.branch,
+      });
 
-    // Worktree checker that always returns true (we're inside the worktree we just created)
-    const inWorktree = () => true;
-
-    // Step 2: Classify (if not skipped)
-    if (!options.skipClassify) {
-      const classifyResult = await classifyStatements(
-        worktree.path,
-        agent,
-        configLoader,
-        inWorktree
-      );
-
-      const classifyParsed = JSON.parse(classifyResult);
-      result.steps.classify = {
-        success: classifyParsed.success !== false,
-        message:
-          classifyParsed.success !== false
-            ? 'Classification complete'
-            : 'Classification had issues',
-        details: classifyParsed,
-      };
-
-      // Classification failure is not fatal - there might be no new files to classify
-      // But if there are unrecognized files, we should note that
-      if (classifyParsed.unrecognized?.length > 0) {
-        result.steps.classify.message = `Classification complete with ${classifyParsed.unrecognized.length} unrecognized file(s)`;
-      }
-    } else {
-      result.steps.classify = {
-        success: true,
-        message: 'Classification skipped (skipClassify: true)',
-      };
-    }
-
-    // Step 3: Dry run (check for unknowns)
-    const dryRunResult = await importStatements(
-      worktree.path,
-      agent,
-      {
-        provider: options.provider,
-        currency: options.currency,
-        checkOnly: true,
-      },
-      configLoader,
-      hledgerExecutor,
-      inWorktree
-    );
-
-    const dryRunParsed = JSON.parse(dryRunResult);
-    result.steps.dryRun = {
-      success: dryRunParsed.success,
-      message: dryRunParsed.success
-        ? `Dry run passed: ${dryRunParsed.summary?.totalTransactions || 0} transactions ready`
-        : `Dry run failed: ${dryRunParsed.summary?.unknown || 0} unknown account(s)`,
-      details: dryRunParsed,
-    };
-
-    if (!dryRunParsed.success) {
-      result.error = 'Dry run found unknown accounts or errors';
-      result.hint = 'Add rules to categorize unknown transactions, then retry';
-      throw new Error('Dry run failed');
-    }
-
-    // Check if there are any transactions to import
-    if (dryRunParsed.summary?.totalTransactions === 0) {
-      result.steps.import = {
-        success: true,
-        message: 'No transactions to import',
-      };
-      result.steps.reconcile = {
-        success: true,
-        message: 'Reconciliation skipped (no transactions)',
-      };
-      result.steps.merge = {
-        success: true,
-        message: 'Merge skipped (no changes)',
-      };
-      result.success = true;
-      result.summary = 'No transactions found to import';
-
-      // Cleanup worktree
-      removeWorktree(worktree, true);
-      result.steps.cleanup = {
-        success: true,
-        message: 'Worktree cleaned up',
-      };
-
-      return JSON.stringify(result);
-    }
-
-    // Step 4: Actual import
-    const importResult = await importStatements(
-      worktree.path,
-      agent,
-      {
-        provider: options.provider,
-        currency: options.currency,
-        checkOnly: false,
-      },
-      configLoader,
-      hledgerExecutor,
-      inWorktree
-    );
-
-    const importParsed = JSON.parse(importResult);
-    result.steps.import = {
-      success: importParsed.success,
-      message: importParsed.success
-        ? `Imported ${importParsed.summary?.totalTransactions || 0} transactions`
-        : `Import failed: ${importParsed.error || 'Unknown error'}`,
-      details: importParsed,
-    };
-
-    if (!importParsed.success) {
-      result.error = `Import failed: ${importParsed.error || 'Unknown error'}`;
-      throw new Error('Import failed');
-    }
-
-    // Step 5: Reconcile closing balance
-    const reconcileResult = await reconcileStatementCore(
-      worktree.path,
-      agent,
-      {
-        provider: options.provider,
-        currency: options.currency,
-        closingBalance: options.closingBalance,
-        account: options.account,
-      },
-      configLoader,
-      hledgerExecutor,
-      inWorktree
-    );
-
-    const reconcileParsed = JSON.parse(reconcileResult);
-    result.steps.reconcile = {
-      success: reconcileParsed.success,
-      message: reconcileParsed.success
-        ? `Balance reconciled: ${reconcileParsed.actualBalance}`
-        : `Balance mismatch: expected ${reconcileParsed.expectedBalance}, got ${reconcileParsed.actualBalance}`,
-      details: reconcileParsed,
-    };
-
-    if (!reconcileParsed.success) {
-      result.error = `Reconciliation failed: ${reconcileParsed.error || 'Balance mismatch'}`;
-      result.hint = 'Check for missing transactions or incorrect rules';
-      throw new Error('Reconciliation failed');
-    }
-
-    // Step 6: Merge to main with --no-ff
-    const commitInfo = extractCommitInfo(reconcileResult);
-    const transactionCount = extractTransactionCount(importResult);
-    const commitMessage = buildCommitMessage(
-      options.provider,
-      options.currency,
-      commitInfo.fromDate,
-      commitInfo.untilDate,
-      transactionCount
-    );
-
-    try {
-      mergeWorktree(worktree, commitMessage);
-      result.steps.merge = {
-        success: true,
-        message: `Merged to main: "${commitMessage}"`,
-        details: { commitMessage },
-      };
-    } catch (error) {
-      result.steps.merge = {
-        success: false,
-        message: `Merge failed: ${error instanceof Error ? error.message : String(error)}`,
-      };
-      result.error = 'Merge to main branch failed';
-      throw new Error('Merge failed');
-    }
-
-    // Step 7: Cleanup worktree (after successful merge)
-    try {
-      removeWorktree(worktree, true);
-      result.steps.cleanup = {
-        success: true,
-        message: 'Worktree cleaned up',
-      };
-    } catch (error) {
-      // Cleanup failure is not fatal
-      result.steps.cleanup = {
-        success: false,
-        message: `Cleanup warning: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-
-    // Success!
-    result.success = true;
-    result.summary = `Successfully imported ${transactionCount} transaction(s)`;
-
-    return JSON.stringify(result);
-  } catch (error) {
-    // Cleanup worktree on failure
-    if (worktree) {
       try {
-        removeWorktree(worktree, true);
-        result.steps.cleanup = {
-          success: true,
-          message: 'Worktree cleaned up after failure',
-        };
-      } catch (cleanupError) {
-        result.steps.cleanup = {
-          success: false,
-          message: `Cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
-        };
+        await executeClassifyStep(context, worktree);
+        await executeDryRunStep(context, worktree);
+        await executeImportStep(context, worktree);
+        await executeReconcileStep(context, worktree);
+        await executeMergeStep(context, worktree);
+
+        result.steps.cleanup = buildStepResult<CleanupStepDetails>(true, 'Worktree cleaned up', {
+          cleanedAfterSuccess: true,
+        });
+
+        const transactionCount =
+          context.result.steps.import?.details?.summary?.totalTransactions || 0;
+        return buildSuccessResult(
+          result,
+          `Successfully imported ${transactionCount} transaction(s)`
+        );
+      } catch (error) {
+        result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+          true,
+          'Worktree cleaned up after failure',
+          { cleanedAfterFailure: true }
+        );
+
+        if (error instanceof NoTransactionsError) {
+          return handleNoTransactions(result);
+        }
+
+        if (!result.error) {
+          result.error = error instanceof Error ? error.message : String(error);
+        }
+
+        return buildErrorResult(result, result.error, result.hint);
       }
-    }
-
-    // Error is already set in result
-    if (!result.error) {
-      result.error = error instanceof Error ? error.message : String(error);
-    }
-
-    return JSON.stringify(result);
+    });
+  } catch (error) {
+    // Worktree creation failed
+    result.steps.worktree = buildStepResult(
+      false,
+      `Failed to create worktree: ${error instanceof Error ? error.message : String(error)}`
+    );
+    result.error = 'Failed to create worktree';
+    return buildErrorResult(result, result.error);
   }
 }
 
