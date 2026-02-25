@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.1.2...v0.1.3) (2026-02-25)
+
+
+### Bug Fixes
+
+* improve git worktree usage ([979c5ce](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/979c5ce29ce15813d28700daa6217efc9b941737))
+
 ## [0.1.2](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.1.1...v0.1.2) (2026-02-25)
 
 
