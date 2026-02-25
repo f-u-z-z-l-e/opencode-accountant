@@ -200,9 +200,9 @@ function executeMoves(
 export async function classifyStatements(
   directory: string,
   agent: string,
-  // eslint-disable-next-line no-unused-vars
+
   configLoader: (dir: string) => ImportConfig = loadImportConfig,
-  // eslint-disable-next-line no-unused-vars
+
   worktreeChecker: (dir: string) => boolean = isInWorktree
 ): Promise<string> {
   // Agent restriction

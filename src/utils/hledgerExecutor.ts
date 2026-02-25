@@ -14,7 +14,7 @@ export interface HledgerResult {
 /**
  * Type for the hledger executor function (allows dependency injection for testing)
  */
-// eslint-disable-next-line no-unused-vars
+
 export type HledgerExecutor = (cmdArgs: string[]) => Promise<HledgerResult>;
 
 /**

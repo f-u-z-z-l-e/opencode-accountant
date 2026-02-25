@@ -13,7 +13,7 @@ import { getYesterday } from '../utils/dateUtils.ts';
 /**
  * Function type for fetching price data from external sources
  */
-// eslint-disable-next-line no-unused-vars
+
 export type PriceFetcher = (args: string[]) => Promise<string>;
 
 /**
@@ -129,7 +129,7 @@ export async function fetchCurrencyPrices(
   agent: string,
   backfill: boolean,
   priceFetcher: PriceFetcher = defaultPriceFetcher,
-  // eslint-disable-next-line no-unused-vars
+
   configLoader: (directory: string) => PricesConfig = loadPricesConfig
 ): Promise<string> {
   // Agent restriction

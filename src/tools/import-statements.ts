@@ -287,10 +287,10 @@ export async function importStatements(
     currency?: string;
     checkOnly?: boolean;
   },
-  // eslint-disable-next-line no-unused-vars
+
   configLoader: (configDir: string) => ImportConfig = loadImportConfig,
   hledgerExecutor: HledgerExecutor = defaultHledgerExecutor,
-  // eslint-disable-next-line no-unused-vars
+
   worktreeChecker: (dir: string) => boolean = isInWorktree
 ): Promise<string> {
   // Agent restriction

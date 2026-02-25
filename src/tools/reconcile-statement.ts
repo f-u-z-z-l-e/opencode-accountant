@@ -131,7 +131,7 @@ function buildSuccessResult(params: {
  */
 function validateWorktree(
   directory: string,
-  // eslint-disable-next-line no-unused-vars
+
   worktreeChecker: (dir: string) => boolean
 ): string | null {
   if (!worktreeChecker(directory)) {
@@ -154,7 +154,7 @@ function validateWorktree(
  */
 function loadConfiguration(
   directory: string,
-  // eslint-disable-next-line no-unused-vars
+
   configLoader: (configDir: string) => ImportConfig
 ): { config: ImportConfig } | { error: string } {
   try {
@@ -321,10 +321,10 @@ export async function reconcileStatementCore(
   directory: string,
   agent: string,
   options: ReconcileStatementsArgs,
-  // eslint-disable-next-line no-unused-vars
+
   configLoader: (configDir: string) => ImportConfig = loadImportConfig,
   hledgerExecutor: HledgerExecutor = defaultHledgerExecutor,
-  // eslint-disable-next-line no-unused-vars
+
   worktreeChecker: (dir: string) => boolean = isInWorktree
 ): Promise<string> {
   // 1. Agent restriction
