@@ -13,6 +13,7 @@ import {
   withWorktree,
   type WorktreeContext,
 } from './worktreeManager.ts';
+import { initTestGitRepo } from './testHelpers.ts';
 
 describe('worktreeManager', () => {
   let testRepoPath: string;
@@ -22,10 +23,8 @@ describe('worktreeManager', () => {
   beforeEach(() => {
     testRepoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'worktree-test-'));
 
-    // Initialize git repo
-    execSync('git init', { cwd: testRepoPath });
-    execSync('git config user.email "test@test.com"', { cwd: testRepoPath });
-    execSync('git config user.name "Test User"', { cwd: testRepoPath });
+    // Initialize git repo with test configuration
+    initTestGitRepo(testRepoPath);
 
     // Create initial commit
     fs.writeFileSync(path.join(testRepoPath, 'README.md'), '# Test Repo\n');

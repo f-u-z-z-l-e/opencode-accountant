@@ -13,6 +13,7 @@ import {
 } from './import-pipeline.ts';
 import type { HledgerExecutor, HledgerResult } from '../utils/hledgerExecutor.ts';
 import type { ImportConfig } from '../utils/importConfig.ts';
+import { initTestGitRepo } from '../utils/testHelpers.ts';
 
 describe('import-pipeline tool', () => {
   let testRepoPath: string;
@@ -21,10 +22,8 @@ describe('import-pipeline tool', () => {
   beforeEach(() => {
     testRepoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'import-pipeline-test-'));
 
-    // Initialize git repo
-    execSync('git init', { cwd: testRepoPath });
-    execSync('git config user.email "test@test.com"', { cwd: testRepoPath });
-    execSync('git config user.name "Test User"', { cwd: testRepoPath });
+    // Initialize git repo with test configuration
+    initTestGitRepo(testRepoPath);
 
     // Create initial structure
     fs.mkdirSync(path.join(testRepoPath, 'ledger'), { recursive: true });

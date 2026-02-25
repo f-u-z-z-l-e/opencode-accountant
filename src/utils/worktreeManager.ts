@@ -57,11 +57,52 @@ function execGitSafe(args: string[], cwd: string): { success: boolean; output: s
 }
 
 /**
+ * Copy untracked files from main repo's import/incoming/ to worktree.
+ *
+ * This ensures CSV files dropped in import/incoming/ are visible in the worktree
+ * even though they're not tracked by git.
+ *
+ * @param mainRepoPath Path to the main repository
+ * @param worktreePath Path to the worktree
+ */
+function copyIncomingFiles(mainRepoPath: string, worktreePath: string): void {
+  const sourceDir = path.join(mainRepoPath, 'import/incoming');
+  const targetDir = path.join(worktreePath, 'import/incoming');
+
+  // Skip if source doesn't exist
+  if (!fs.existsSync(sourceDir)) {
+    return;
+  }
+
+  // Ensure target directory exists
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  // Copy all files (not subdirectories or hidden files)
+  const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+  let copiedCount = 0;
+
+  for (const entry of entries) {
+    if (entry.isFile() && !entry.name.startsWith('.')) {
+      const srcPath = path.join(sourceDir, entry.name);
+      const destPath = path.join(targetDir, entry.name);
+      fs.copyFileSync(srcPath, destPath);
+      copiedCount++;
+    }
+  }
+
+  if (copiedCount > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`[INFO] Copied ${copiedCount} file(s) from import/incoming/ to worktree`);
+  }
+}
+
+/**
  * Creates a new import worktree with a unique UUID.
  *
  * This creates an isolated workspace for import operations:
  * 1. Creates a new branch from HEAD
  * 2. Creates a worktree at /tmp/import-worktree-<uuid>
+ * 3. Copies untracked files from import/incoming/ to worktree
  *
  * @param mainRepoPath Path to the main repository
  * @param options Optional configuration
@@ -95,6 +136,9 @@ export function createImportWorktree(
     execGitSafe(['branch', '-D', branch], mainRepoPath);
     throw error;
   }
+
+  // Copy untracked files from import/incoming/ to worktree
+  copyIncomingFiles(mainRepoPath, worktreePath);
 
   return {
     path: worktreePath,

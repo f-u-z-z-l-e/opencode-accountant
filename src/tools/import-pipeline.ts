@@ -1,4 +1,6 @@
 import { tool } from '@opencode-ai/plugin';
+import * as fs from 'fs';
+import * as path from 'path';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
 import { mergeWorktree, withWorktree, type WorktreeContext } from '../utils/worktreeManager.ts';
@@ -49,8 +51,12 @@ interface DryRunStepDetails {
 interface ImportStepDetails {
   success: boolean;
   summary?: {
-    totalTransactions: number;
+    totalTransactions?: number;
   };
+  files?: Array<{
+    csv?: string;
+    [key: string]: unknown;
+  }>;
   error?: string;
 }
 
@@ -237,6 +243,55 @@ export function buildCommitMessage(
   }
 
   return `${parts.join(' ')}${dateRange}${txStr}`;
+}
+
+/**
+ * Clean up original files from main repo's import/incoming/ directory.
+ * This runs after successful merge to remove files that were successfully imported.
+ */
+function cleanupIncomingFiles(worktree: WorktreeContext, context: PipelineContext): void {
+  const incomingDir = path.join(worktree.mainRepoPath, 'import/incoming');
+
+  if (!fs.existsSync(incomingDir)) {
+    return;
+  }
+
+  // Extract filenames from import step results
+  const importStep = context.result.steps.import;
+  if (!importStep?.success || !importStep.details) {
+    return;
+  }
+
+  const importResult = importStep.details as ImportStepDetails;
+  if (!importResult.files || !Array.isArray(importResult.files)) {
+    return;
+  }
+
+  let deletedCount = 0;
+  for (const fileResult of importResult.files) {
+    if (!fileResult.csv) continue;
+
+    // Extract just the filename from the path
+    const filename = path.basename(fileResult.csv);
+    const filePath = path.join(incomingDir, filename);
+
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+        deletedCount++;
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[ERROR] Failed to delete ${filename}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+  }
+
+  if (deletedCount > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`[INFO] Cleaned up ${deletedCount} file(s) from import/incoming/`);
+  }
 }
 
 /**
@@ -443,6 +498,9 @@ export async function executeMergeStep(
       `Merged to main: "${commitMessage}"`,
       mergeDetails
     );
+
+    // Cleanup original files from main repo's incoming directory after successful merge
+    cleanupIncomingFiles(worktree, context);
   } catch (error) {
     const message = `Merge failed: ${error instanceof Error ? error.message : String(error)}`;
     context.result.steps.merge = buildStepResult(false, message);
