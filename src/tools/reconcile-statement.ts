@@ -35,12 +35,12 @@ interface ReconcileStatementsArgs {
  * CSV metadata extracted for reconciliation
  */
 interface CsvMetadata {
-  from_date?: string;
-  until_date?: string;
-  opening_balance?: string;
-  closing_balance?: string;
+  'from-date'?: string;
+  'until-date'?: string;
+  'opening-balance'?: string;
+  'closing-balance'?: string;
   currency?: string;
-  account_number?: string;
+  'account-number'?: string;
 }
 
 /**
@@ -212,11 +212,12 @@ function determineClosingBalance(
 
   let closingBalance = options.closingBalance;
 
-  if (!closingBalance && metadata?.closing_balance) {
-    const { closing_balance, currency } = metadata;
-    closingBalance = closing_balance;
+  if (!closingBalance && metadata?.['closing-balance']) {
+    const closingBalanceValue = metadata['closing-balance'];
+    const currency = metadata.currency;
+    closingBalance = closingBalanceValue;
     // Add currency if not present and metadata has it
-    if (currency && !closingBalance.includes(currency)) {
+    if (currency && closingBalance && !closingBalance.includes(currency)) {
       closingBalance = `${currency} ${closingBalance}`;
     }
   }
@@ -364,7 +365,7 @@ function tryExtractClosingBalanceFromCSV(
       'balance',
       'Balance',
       'BALANCE',
-      'closing_balance',
+      'closing-balance',
       'Closing Balance',
       'account_balance',
       'Account Balance',

@@ -221,12 +221,12 @@ describe('import-pipeline tool', () => {
 describe('utility functions', () => {
   describe('extractFromJsonResult', () => {
     it('should extract data using custom extractor', () => {
-      const json = '{"metadata": {"from_date": "2024-01-01"}}';
+      const json = '{"metadata": {"from-date": "2024-01-01"}}';
       const result = extractFromJsonResult(
         json,
         (parsed: unknown) => {
-          const data = parsed as { metadata?: { from_date?: string } };
-          return data.metadata?.from_date || '';
+          const data = parsed as { metadata?: { 'from-date'?: string } };
+          return data.metadata?.['from-date'] || '';
         },
         'default'
       );
@@ -254,8 +254,8 @@ describe('utility functions', () => {
     it('should extract commit info from reconcile result', () => {
       const json = JSON.stringify({
         metadata: {
-          from_date: '2024-01-01',
-          until_date: '2024-01-31',
+          'from-date': '2024-01-01',
+          'until-date': '2024-01-31',
         },
       });
       const result = extractCommitInfo(json);
