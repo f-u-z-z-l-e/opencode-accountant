@@ -183,5 +183,66 @@ source actual-file.csv`;
       const result = findRulesForCsv('/project/data/transactions.csv', mapping);
       expect(result).toBe('/project/rules/ubs.rules');
     });
+
+    describe('filename-based matching', () => {
+      it('should match CSV by filename when path matching fails', () => {
+        const mapping = {
+          '/repo/import/pending/ubs/chf/ubs-0235*.csv': '/repo/rules/ubs-0235-90250546.0.rules',
+        };
+        // CSV is in done directory, path matching fails, filename matching succeeds
+        const csvPath =
+          '/repo/import/done/ubs/chf/ubs-0235-90250546.0-transactions-2026-01-05-to-2026-01-31.csv';
+        expect(findRulesForCsv(csvPath, mapping)).toBe('/repo/rules/ubs-0235-90250546.0.rules');
+      });
+
+      it('should use longest-match strategy for ambiguous filenames', () => {
+        const mapping = {
+          '/repo/import/pending/a/account1*.csv': '/repo/rules/account1.rules',
+          '/repo/import/pending/b/account10*.csv': '/repo/rules/account10.rules',
+        };
+        const csvPath = '/repo/import/done/a/account10-transactions.csv';
+        // account10.rules should match (longer prefix) instead of account1.rules
+        expect(findRulesForCsv(csvPath, mapping)).toBe('/repo/rules/account10.rules');
+      });
+
+      it('should prefer path/glob matching over filename matching', () => {
+        const mapping = {
+          '/repo/import/done/ubs/chf/ubs-0235*.csv': '/repo/rules/ubs-exact-path.rules',
+          '/repo/import/pending/other/ubs-0235*.csv': '/repo/rules/ubs-other.rules',
+        };
+        const csvPath = '/repo/import/done/ubs/chf/ubs-0235-90250546.0-transactions.csv';
+        // Glob pattern matches (tier 3), should prefer that over filename matching (tier 4)
+        expect(findRulesForCsv(csvPath, mapping)).toBe('/repo/rules/ubs-exact-path.rules');
+      });
+
+      it('should handle multiple filename matches by choosing longest', () => {
+        const mapping = {
+          '/repo/import/pending/a/ubs*.csv': '/repo/rules/ubs.rules',
+          '/repo/import/pending/b/ubs-0235*.csv': '/repo/rules/ubs-0235.rules',
+          '/repo/import/pending/c/ubs-0235-90250546.0*.csv':
+            '/repo/rules/ubs-0235-90250546.0.rules',
+        };
+        const csvPath = '/repo/import/done/ubs/chf/ubs-0235-90250546.0-transactions-2026-01.csv';
+        // Most specific (longest) match should win
+        expect(findRulesForCsv(csvPath, mapping)).toBe('/repo/rules/ubs-0235-90250546.0.rules');
+      });
+
+      it('should match exact filename without additional suffix', () => {
+        const mapping = {
+          '/repo/import/pending/ubs/ubs-0235-90250546.0*.csv':
+            '/repo/rules/ubs-0235-90250546.0.rules',
+        };
+        const csvPath = '/repo/import/done/ubs/ubs-0235-90250546.0.csv';
+        expect(findRulesForCsv(csvPath, mapping)).toBe('/repo/rules/ubs-0235-90250546.0.rules');
+      });
+
+      it('should return null when no filename match exists', () => {
+        const mapping = {
+          '/repo/import/pending/postfinance/pf*.csv': '/repo/rules/postfinance.rules',
+        };
+        const csvPath = '/repo/import/done/ubs/ubs-account-transactions.csv';
+        expect(findRulesForCsv(csvPath, mapping)).toBeNull();
+      });
+    });
   });
 });

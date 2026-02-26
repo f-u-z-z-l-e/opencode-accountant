@@ -114,5 +114,25 @@ export function findRulesForCsv(csvPath: string, mapping: RulesMapping): string 
     }
   }
 
+  // Tier 4: Filename-based matching with longest-match strategy
+  // When path/glob matching fails (e.g., rules source points to pending/ but CSV is in done/)
+  // fall back to matching based on filename prefix
+  const csvBasename = path.basename(csvPath);
+  const matches: Array<{ rulesFile: string; prefixLength: number }> = [];
+
+  for (const rulesFile of Object.values(mapping)) {
+    const rulesBasename = path.basename(rulesFile, '.rules');
+    if (csvBasename.startsWith(rulesBasename)) {
+      matches.push({ rulesFile, prefixLength: rulesBasename.length });
+    }
+  }
+
+  if (matches.length > 0) {
+    // Sort by prefix length (longest first) and return most specific match
+    // This handles ambiguous cases like account1 vs account10
+    matches.sort((a, b) => b.prefixLength - a.prefixLength);
+    return matches[0].rulesFile;
+  }
+
   return null;
 }

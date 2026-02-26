@@ -226,7 +226,14 @@ The `import-pipeline` tool is the single entry point for importing bank statemen
 
 #### Rules File Matching
 
-The tool matches CSV files to their rules files by parsing the `source` directive in each `.rules` file. For example, if `ubs-account.rules` contains:
+The tool matches CSV files to their rules files using multiple methods:
+
+1. **Source directive matching** (primary): Parses the `source` directive in each `.rules` file and supports glob patterns
+2. **Filename matching** (fallback): If path matching fails, matches based on the rules filename prefix
+
+**Example using source directive:**
+
+If `ubs-account.rules` contains:
 
 ```
 source ../../import/pending/ubs/chf/transactions.csv
@@ -234,7 +241,13 @@ source ../../import/pending/ubs/chf/transactions.csv
 
 The tool will use that rules file when processing `transactions.csv`.
 
-**Note:** The `source` path should match your configured `{paths.pending}` directory structure.
+**Example using filename matching:**
+
+If you have a rules file named `ubs-1234-567890.rules` and a CSV file named `ubs-1234-567890-transactions-2026-01-05-to-2026-01-31.csv`, the tool will automatically match them based on the common prefix `ubs-1234-567890`.
+
+This is particularly useful when CSV files move between directories (e.g., from `pending/` to `done/`) or when maintaining exact source paths is impractical.
+
+**Note:** Name your rules files to match the prefix of your CSV files for automatic matching.
 
 See the hledger documentation for details on rules file format and syntax.
 

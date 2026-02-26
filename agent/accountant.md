@@ -105,7 +105,9 @@ The `import-pipeline` tool provides an **atomic, safe workflow** using git workt
 ### Rules Files
 
 - The location of the rules files is configured in `config/import/providers.yaml`
-- Match CSV to rules file via the `source` directive in each `.rules` file
+- Match CSV to rules file via the `source` directive in each `.rules` file, with automatic fallback to filename-based matching
+- **Filename matching example:** If the rules file is named `ubs-1234-567890.rules`, it will automatically match CSV files like `ubs-1234-567890-transactions-2026-01.csv` based on the common prefix. This works even when CSV files move between directories.
+- When account detection fails, recommend users either fix their `source` directive or rename their rules file to match the CSV filename prefix
 - Use field names from the `fields` directive for matching
 - Unknown account pattern: `income:unknown` (positive amounts) / `expenses:unknown` (negative amounts)
 
