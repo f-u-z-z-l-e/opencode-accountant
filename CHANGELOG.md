@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.2.0...v0.3.0) (2026-02-26)
+
+
+### Features
+
+* add hledger native glob support for CSV import matching ([0142acc](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/0142acc0ce709f987c95bf1caf502fa305be86ea))
+
 ## [0.2.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.1.3...v0.2.0) (2026-02-25)
 
 
