@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.0...v0.4.1) (2026-02-26)
+
+
+### Bug Fixes
+
+* update AGENTS.md ([9ba6d37](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/9ba6d37a362668012d23ce0b0b5f65986294ba02))
+
 ## [0.4.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.3.0...v0.4.0) (2026-02-26)
 
 
