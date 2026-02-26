@@ -300,14 +300,14 @@ Deposit,Current,2023-06-12 10:00:00,2023-06-12 10:00:00,Initial deposit,1000.00,
                 currencyField: 'Currency',
                 skipRows: 8,
                 delimiter: ';',
-                renamePattern: 'ubs-{account_number}-{from_date}-{until_date}.csv',
+                renamePattern: 'ubs-{account-number}-{from-date}-{until-date}.csv',
                 metadata: [
-                  { field: 'account_number', row: 0, column: 1, normalize: 'spaces-to-dashes' },
+                  { field: 'account-number', row: 0, column: 1, normalize: 'spaces-to-dashes' },
                   { field: 'iban', row: 1, column: 1 },
-                  { field: 'from_date', row: 2, column: 1 },
-                  { field: 'until_date', row: 3, column: 1 },
-                  { field: 'opening_balance', row: 4, column: 1 },
-                  { field: 'closing_balance', row: 5, column: 1 },
+                  { field: 'from-date', row: 2, column: 1 },
+                  { field: 'until-date', row: 3, column: 1 },
+                  { field: 'opening-balance', row: 4, column: 1 },
+                  { field: 'closing-balance', row: 5, column: 1 },
                   { field: 'currency', row: 6, column: 1 },
                 ],
               },
@@ -337,12 +337,12 @@ Date;Description;Amount;Currency
       expect(result!.provider).toBe('ubsbank');
       expect(result!.currency).toBe('chf');
       expect(result!.metadata).toEqual({
-        account_number: '1234-56789012.3',
+        'account-number': '1234-56789012.3',
         iban: 'CH93 0076 2011 6238 5295 7',
-        from_date: '2026-01-05',
-        until_date: '2026-01-31',
-        opening_balance: '1632.63',
-        closing_balance: '2324.79',
+        'from-date': '2026-01-05',
+        'until-date': '2026-01-31',
+        'opening-balance': '1632.63',
+        'closing-balance': '2324.79',
         currency: 'CHF',
       });
       expect(result!.outputFilename).toBe('ubs-1234-56789012.3-2026-01-05-2026-01-31.csv');

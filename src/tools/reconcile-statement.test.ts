@@ -21,9 +21,9 @@ describe('reconcile-statement tool', () => {
             skipRows: 8,
             delimiter: ';',
             metadata: [
-              { field: 'closing_balance', row: 5, column: 1 },
-              { field: 'from_date', row: 2, column: 1 },
-              { field: 'until_date', row: 3, column: 1 },
+              { field: 'closing-balance', row: 5, column: 1 },
+              { field: 'from-date', row: 2, column: 1 },
+              { field: 'until-date', row: 3, column: 1 },
             ],
           },
         ],

@@ -93,8 +93,8 @@ interface ReconcileStepDetails {
   actualBalance?: string;
   expectedBalance?: string;
   metadata?: {
-    from_date?: string;
-    until_date?: string;
+    'from-date'?: string;
+    'until-date'?: string;
   };
   error?: string;
 }
@@ -229,10 +229,10 @@ export function extractCommitInfo(reconcileResult: string): {
   return extractFromJsonResult<{ fromDate?: string; untilDate?: string }>(
     reconcileResult,
     (parsed: unknown) => {
-      const data = parsed as { metadata?: { from_date?: string; until_date?: string } };
+      const data = parsed as { metadata?: { 'from-date'?: string; 'until-date'?: string } };
       return {
-        fromDate: data.metadata?.from_date,
-        untilDate: data.metadata?.until_date,
+        fromDate: data.metadata?.['from-date'],
+        untilDate: data.metadata?.['until-date'],
       };
     },
     { fromDate: undefined, untilDate: undefined }
@@ -645,8 +645,8 @@ export async function executeMergeStep(
   }
 
   const commitInfo = {
-    fromDate: reconcileDetails.metadata?.from_date,
-    untilDate: reconcileDetails.metadata?.until_date,
+    fromDate: reconcileDetails.metadata?.['from-date'],
+    untilDate: reconcileDetails.metadata?.['until-date'],
   };
   const transactionCount = importDetails.summary?.totalTransactions || 0;
 

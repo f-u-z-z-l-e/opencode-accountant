@@ -122,12 +122,21 @@ providers:
         currencyField: Currency
         skipRows: 9
         delimiter: ';'
-        renamePattern: 'transactions-ubs-{account-number}.csv'
+        renamePattern: 'ubs-{account-number}-transactions-{from-date}-to-{until-date}.csv'
         metadata:
           - field: account-number
             row: 0
             column: 1
             normalize: spaces-to-dashes
+          - field: from-date
+            row: 2
+            column: 1
+          - field: until-date
+            row: 3
+            column: 1
+          - field: closing-balance
+            row: 5
+            column: 1
     currencies:
       CHF: chf
       EUR: eur
@@ -278,13 +287,13 @@ Configure metadata extraction in `providers.yaml`:
 
 ```yaml
 metadata:
-  - field: closing_balance
+  - field: closing-balance
     row: 5
     column: 1
-  - field: from_date
+  - field: from-date
     row: 2
     column: 1
-  - field: until_date
+  - field: until-date
     row: 3
     column: 1
 ```
