@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.3.0...v0.4.0) (2026-02-26)
+
+
+### Features
+
+* add automatic account declarations and CSV balance detection ([6302981](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/63029813ad89efb981a041b448bb9fcb3a968b60))
+
 ## [0.3.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.2.0...v0.3.0) (2026-02-26)
 
 
