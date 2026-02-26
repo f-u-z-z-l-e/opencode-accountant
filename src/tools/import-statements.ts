@@ -1,6 +1,7 @@
 import { tool } from '@opencode-ai/plugin';
 import * as fs from 'fs';
 import * as path from 'path';
+import { glob } from 'glob';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { type ImportConfig, loadImportConfig } from '../utils/importConfig.ts';
 import { findRulesForCsv, loadRulesMapping, type RulesMapping } from '../utils/rulesMatcher.ts';
@@ -96,6 +97,41 @@ function buildSuccessResult(
 }
 
 /**
+ * Find the CSV file that matches the source directive in a rules file.
+ * Returns the newest matching file (matching hledger's behavior).
+ * Returns null if no source directive found or no files match.
+ */
+function findCsvFromRulesFile(rulesFile: string): string | null {
+  const content = fs.readFileSync(rulesFile, 'utf-8');
+
+  // Parse source directive
+  const match = content.match(/^source\s+([^\n#]+)/m);
+  if (!match) {
+    return null;
+  }
+  const sourcePath = match[1].trim();
+
+  const rulesDir = path.dirname(rulesFile);
+  const absolutePattern = path.resolve(rulesDir, sourcePath);
+
+  // Use glob to find matching files
+  const matches = glob.sync(absolutePattern);
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  // Sort by modification time, newest first (matching hledger's behavior)
+  matches.sort((a, b) => {
+    const aStat = fs.statSync(a);
+    const bStat = fs.statSync(b);
+    return bStat.mtime.getTime() - aStat.mtime.getTime();
+  });
+
+  return matches[0];
+}
+
+/**
  * Executes the actual import of CSV files into hledger
  * Returns success or error with details
  */
@@ -109,7 +145,6 @@ async function executeImports(
   const importedFiles: string[] = [];
 
   for (const fileResult of fileResults) {
-    const csvFile = path.join(directory, fileResult.csv);
     const rulesFile = fileResult.rulesFile ? path.join(directory, fileResult.rulesFile) : null;
     if (!rulesFile) continue; // Already handled above
 
@@ -133,14 +168,7 @@ async function executeImports(
       };
     }
 
-    const result = await hledgerExecutor([
-      'import',
-      '-f',
-      yearJournalPath,
-      csvFile,
-      '--rules-file',
-      rulesFile,
-    ]);
+    const result = await hledgerExecutor(['import', '-f', yearJournalPath, rulesFile]);
 
     if (result.exitCode !== 0) {
       return {
@@ -149,7 +177,11 @@ async function executeImports(
       };
     }
 
-    importedFiles.push(csvFile);
+    // Find which CSV was actually imported via the source directive
+    const importedCsv = findCsvFromRulesFile(rulesFile);
+    if (importedCsv) {
+      importedFiles.push(importedCsv);
+    }
   }
 
   // Validate the ledger after all imports to ensure integrity
@@ -206,7 +238,7 @@ async function processCsvFile(
   }
 
   // Run hledger print for dry-run check
-  const result = await hledgerExecutor(['print', '-f', csvFile, '--rules-file', rulesFile]);
+  const result = await hledgerExecutor(['print', '-f', rulesFile]);
 
   if (result.exitCode !== 0) {
     return {
@@ -351,18 +383,56 @@ export async function importStatements(
   let filesWithErrors = 0;
   let filesWithoutRules = 0;
 
-  // Process each CSV file
+  // Group CSV files by their matching rules file
+  // When using glob patterns, multiple CSV files may match the same rules file.
+  // We only want to process each rules file once, using the newest matching CSV
+  // (matching hledger's native behavior).
+  const rulesFileToCSVs = new Map<string, string[]>();
+  const csvsWithoutRules: string[] = [];
+
   for (const csvFile of csvFiles) {
+    const rulesFile = findRulesForCsv(csvFile, rulesMapping);
+    if (!rulesFile) {
+      csvsWithoutRules.push(csvFile);
+    } else {
+      if (!rulesFileToCSVs.has(rulesFile)) {
+        rulesFileToCSVs.set(rulesFile, []);
+      }
+      rulesFileToCSVs.get(rulesFile)!.push(csvFile);
+    }
+  }
+
+  // Process CSVs without rules
+  for (const csvFile of csvsWithoutRules) {
     const fileResult = await processCsvFile(csvFile, rulesMapping, directory, hledgerExecutor);
+    fileResults.push(fileResult);
+
+    if (fileResult.error) {
+      filesWithoutRules++;
+    }
+
+    totalTransactions += fileResult.totalTransactions;
+    totalMatched += fileResult.matchedTransactions;
+    totalUnknown += fileResult.unknownPostings.length;
+  }
+
+  // Process each rules file with its newest matching CSV
+  for (const [_rulesFile, matchingCSVs] of rulesFileToCSVs.entries()) {
+    // Sort by modification time, newest first (matching hledger's behavior)
+    matchingCSVs.sort((a, b) => {
+      const aStat = fs.statSync(a);
+      const bStat = fs.statSync(b);
+      return bStat.mtime.getTime() - aStat.mtime.getTime();
+    });
+
+    // Process only the newest CSV
+    const newestCSV = matchingCSVs[0];
+    const fileResult = await processCsvFile(newestCSV, rulesMapping, directory, hledgerExecutor);
     fileResults.push(fileResult);
 
     // Update counters
     if (fileResult.error) {
-      if (fileResult.rulesFile === null) {
-        filesWithoutRules++;
-      } else {
-        filesWithErrors++;
-      }
+      filesWithErrors++;
     }
 
     totalTransactions += fileResult.totalTransactions;
@@ -379,7 +449,7 @@ export async function importStatements(
       success: !hasUnknowns && !hasErrors,
       files: fileResults,
       summary: {
-        filesProcessed: csvFiles.length,
+        filesProcessed: fileResults.length, // Count actually processed files, not total CSV files found
         filesWithErrors,
         filesWithoutRules,
         totalTransactions,
@@ -405,7 +475,7 @@ export async function importStatements(
       'Cannot import: some transactions have unknown accounts or files have errors',
       fileResults,
       {
-        filesProcessed: csvFiles.length,
+        filesProcessed: fileResults.length, // Count actually processed files
         filesWithErrors,
         filesWithoutRules,
         totalTransactions,
@@ -430,7 +500,7 @@ export async function importStatements(
       importResult.error!,
       fileResults,
       {
-        filesProcessed: csvFiles.length,
+        filesProcessed: fileResults.length, // Count actually processed files
         filesWithErrors: 1,
         filesWithoutRules,
         totalTransactions,

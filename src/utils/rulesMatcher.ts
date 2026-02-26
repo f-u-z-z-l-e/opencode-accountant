@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { minimatch } from 'minimatch';
 
 /**
  * Mapping of absolute CSV file paths to their corresponding rules file paths
@@ -85,6 +86,7 @@ export function loadRulesMapping(rulesDir: string): RulesMapping {
 
 /**
  * Finds the rules file for a given CSV file path.
+ * First tries direct path matching, then tries normalized paths, then tries glob pattern matching.
  *
  * @param csvPath The absolute path to the CSV file
  * @param mapping The rules mapping from loadRulesMapping
@@ -99,7 +101,15 @@ export function findRulesForCsv(csvPath: string, mapping: RulesMapping): string 
   // Normalize paths and try again (handle different path separators, etc.)
   const normalizedCsvPath = path.normalize(csvPath);
   for (const [mappedCsv, rulesFile] of Object.entries(mapping)) {
-    if (path.normalize(mappedCsv) === normalizedCsvPath) {
+    const normalizedMappedCsv = path.normalize(mappedCsv);
+    if (normalizedMappedCsv === normalizedCsvPath) {
+      return rulesFile;
+    }
+  }
+
+  // Try glob pattern matching
+  for (const [pattern, rulesFile] of Object.entries(mapping)) {
+    if (minimatch(csvPath, pattern) || minimatch(normalizedCsvPath, path.normalize(pattern))) {
       return rulesFile;
     }
   }

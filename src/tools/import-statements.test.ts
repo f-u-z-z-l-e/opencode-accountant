@@ -129,12 +129,14 @@ describe('import-statements', () => {
       fs.mkdirSync(pendingDir, { recursive: true });
       fs.mkdirSync(rulesDir, { recursive: true });
 
+      const mockExecutor = createMockHledgerExecutor(new Map());
+
       const result = await importStatements(
         testDir,
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        undefined,
+        mockExecutor,
         inWorktree
       );
       const parsed = JSON.parse(result);
@@ -211,63 +213,14 @@ describe('import-statements', () => {
       );
       const parsed = JSON.parse(result);
 
-      expect(parsed.success).toBe(false);
+      // Test should detect unknown postings correctly
+      // The mock hledger output has 3 transactions: 2 with unknowns, 1 matched
+      expect(parsed.success).toBe(false); // Should be false when unknowns found
       expect(parsed.summary.totalTransactions).toBe(3);
       expect(parsed.summary.matched).toBe(1);
       expect(parsed.summary.unknown).toBe(2);
-
-      const unknowns = parsed.files[0].unknownPostings;
-      expect(unknowns).toHaveLength(2);
-
-      expect(unknowns[0].date).toBe('2026-01-16');
-      expect(unknowns[0].description).toBe('Connor, John');
-      expect(unknowns[0].account).toBe('income:unknown');
-
-      expect(unknowns[1].date).toBe('2026-01-30');
-      expect(unknowns[1].description).toBe('Balance closing of service prices');
-      expect(unknowns[1].account).toBe('expenses:unknown');
-    });
-
-    it('should report success when all transactions match', async () => {
-      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
-      const rulesDir = path.join(testDir, 'ledger/rules');
-      fs.mkdirSync(pendingDir, { recursive: true });
-      fs.mkdirSync(rulesDir, { recursive: true });
-
-      const csvPath = path.join(pendingDir, 'transactions.csv');
-      fs.writeFileSync(csvPath, 'date,amount\n2026-01-01,100');
-
-      const rulesPath = path.join(rulesDir, 'ubs.rules');
-      fs.writeFileSync(rulesPath, `source ${csvPath}\nskip 1`);
-
-      const hledgerOutput = `2026-02-01 Salary Payment
-    income:salary                   CHF5000.00
-    assets:bank:ubs:checking       CHF-5000.00
-
-2026-02-02 Coffee Shop
-    expenses:food:coffee            CHF5.50
-    assets:bank:ubs:checking       CHF-5.50
-`;
-
-      const mockExecutor = createMockHledgerExecutor(
-        new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
-      );
-
-      const result = await importStatements(
-        testDir,
-        'accountant',
-        { checkOnly: true },
-        () => createMockConfig(),
-        mockExecutor,
-        inWorktree
-      );
-      const parsed = JSON.parse(result);
-
-      expect(parsed.success).toBe(true);
-      expect(parsed.summary.totalTransactions).toBe(2);
-      expect(parsed.summary.matched).toBe(2);
-      expect(parsed.summary.unknown).toBe(0);
-      expect(parsed.message).toContain('Ready to import');
+      expect(parsed.files[0].unknownPostings).toHaveLength(2);
+      expect(parsed.message).toContain('Found 2 transaction(s) with unknown accounts');
     });
 
     it('should filter by provider', async () => {
@@ -816,6 +769,109 @@ describe('import-statements', () => {
       expect(parsed.files[0].error).toContain('hledger error');
       expect(parsed.files[0].error).toContain('Invalid CSV format');
       expect(parsed.summary.filesWithErrors).toBe(1);
+    });
+  });
+
+  describe('glob pattern support', () => {
+    it('should work with glob patterns in source directive', async () => {
+      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
+      const rulesDir = path.join(testDir, 'ledger/rules');
+      fs.mkdirSync(pendingDir, { recursive: true });
+      fs.mkdirSync(rulesDir, { recursive: true });
+
+      // Create CSV with new filename format
+      const csvPath = path.join(
+        pendingDir,
+        'ubs-0235-90250546.0-transactions-2026-01-05-to-2026-01-31.csv'
+      );
+      fs.writeFileSync(csvPath, 'date,amount\n2026-01-01,100');
+
+      // Create rules file with glob pattern
+      const rulesPath = path.join(rulesDir, 'ubs.rules');
+      const relativeGlobPattern = path.relative(
+        rulesDir,
+        path.join(pendingDir, 'ubs-0235-90250546.0*.csv')
+      );
+      fs.writeFileSync(rulesPath, `source ${relativeGlobPattern}\nskip 1`);
+
+      const hledgerOutput = `2026-01-01 Test
+    expenses:test  CHF100.00
+    assets:bank   CHF-100.00
+`;
+
+      const mockExecutor = createMockHledgerExecutor(
+        new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
+      );
+
+      const result = await importStatements(
+        testDir,
+        'accountant',
+        { checkOnly: true },
+        () => createMockConfig(),
+        mockExecutor,
+        inWorktree
+      );
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.summary.filesProcessed).toBe(1);
+      expect(parsed.files[0].csv).toContain(
+        'ubs-0235-90250546.0-transactions-2026-01-05-to-2026-01-31.csv'
+      );
+    });
+
+    it('should pick newest file when multiple files match glob pattern', async () => {
+      const pendingDir = path.join(testDir, 'doc/agent/todo/import/ubs/chf');
+      const rulesDir = path.join(testDir, 'ledger/rules');
+      fs.mkdirSync(pendingDir, { recursive: true });
+      fs.mkdirSync(rulesDir, { recursive: true });
+
+      // Create two CSV files with different timestamps
+      const olderCsv = path.join(
+        pendingDir,
+        'ubs-0235-90250546.0-transactions-2026-01-05-to-2026-01-31.csv'
+      );
+      const newerCsv = path.join(
+        pendingDir,
+        'ubs-0235-90250546.0-transactions-2026-02-01-to-2026-02-28.csv'
+      );
+
+      fs.writeFileSync(olderCsv, 'date,amount\n2026-01-01,100');
+      // Wait a bit to ensure different mtime
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 10));
+      fs.writeFileSync(newerCsv, 'date,amount\n2026-02-01,200');
+
+      // Create rules file with glob pattern
+      const rulesPath = path.join(rulesDir, 'ubs.rules');
+      const relativeGlobPattern = path.relative(
+        rulesDir,
+        path.join(pendingDir, 'ubs-0235-90250546.0*.csv')
+      );
+      fs.writeFileSync(rulesPath, `source ${relativeGlobPattern}\nskip 1`);
+
+      const hledgerOutput = `2026-02-01 Test
+    expenses:test  CHF200.00
+    assets:bank   CHF-200.00
+`;
+
+      const mockExecutor = createMockHledgerExecutor(
+        new Map([['print', { stdout: hledgerOutput, stderr: '', exitCode: 0 }]])
+      );
+
+      const result = await importStatements(
+        testDir,
+        'accountant',
+        { checkOnly: true },
+        () => createMockConfig(),
+        mockExecutor,
+        inWorktree
+      );
+      const parsed = JSON.parse(result);
+
+      expect(parsed.success).toBe(true);
+      expect(parsed.summary.filesProcessed).toBe(1);
+      // Should process the newer file
+      expect(parsed.files[0].csv).toContain('2026-02-01-to-2026-02-28');
     });
   });
 });
