@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.2...v0.4.3) (2026-02-26)
+
+
+### Bug Fixes
+
+* simplify import pipeline by removing git worktree complexity ([b021a7d](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/b021a7d007bd29ad32c76cac2edd10d06bd08620))
+
 ## [0.4.2](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.1...v0.4.2) (2026-02-26)
 
 
