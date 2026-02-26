@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.0...v1.0.0) (2026-02-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* metadata field names in providers.yaml now require dashes instead of underscores (e.g., closing-balance not closing_balance)
+
+### Code Refactoring
+
+* standardize metadata field names to use kebab-case ([09cecd9](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/09cecd99469c747f625675c2931d0aabca74fb19))
+
 ## [0.4.0](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.3.0...v0.4.0) (2026-02-26)
 
 
