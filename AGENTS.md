@@ -63,3 +63,6 @@
 - **Type**: ES Module package for Bun modules
 - **Target**: Bun runtime, ES2021+
 - **Purpose**: General-purpose Bun module development
+
+## Version Control (git)
+- **BREAKING CHANGES** need to be approved by user
