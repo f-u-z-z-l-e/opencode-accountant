@@ -323,7 +323,8 @@ export async function importStatements(
   configLoader: (configDir: string) => ImportConfig = loadImportConfig,
   hledgerExecutor: HledgerExecutor = defaultHledgerExecutor,
 
-  worktreeChecker: (dir: string) => boolean = isInWorktree
+  worktreeChecker: (dir: string) => boolean = isInWorktree,
+  _logger?: unknown
 ): Promise<string> {
   // Agent restriction
   const restrictionError = checkAccountantAgent(agent, 'import statements');

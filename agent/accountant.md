@@ -97,10 +97,70 @@ The `import-pipeline` tool provides an **atomic, safe workflow** using git workt
    - Deletes processed CSV files from main repo's import/incoming
    - Cleans up the worktree
 4. **Handle Failures**: If any step fails (e.g., unknown postings found):
-   - Worktree is discarded, main branch remains untouched
+   - Worktree is preserved by default at `/tmp/import-worktree-<uuid>` for debugging
+   - Main branch remains untouched
    - Review error output for unknown postings with full CSV row data
    - Update rules file with `if` directives to match the transaction
    - Re-run `import-pipeline`
+
+### Error Recovery and Worktree Preservation
+
+**Default Behavior:**
+
+- On success: Worktrees are automatically cleaned up
+- On error: Worktrees are preserved in `/tmp/import-worktree-<uuid>` for debugging
+- Worktrees in `/tmp` are automatically cleaned up on system reboot
+
+**Manual Recovery from Failed Import:**
+
+If an import fails and the worktree is preserved, you can:
+
+1. **Inspect the worktree:**
+
+   ```bash
+   cd /tmp/import-worktree-<uuid>
+   hledger check                    # Validate journal
+   hledger balance                   # Check balances
+   cat ledger/2026.journal           # View imported transactions
+   ```
+
+2. **Continue the import manually:**
+
+   ```bash
+   cd /tmp/import-worktree-<uuid>
+   # Fix any issues (edit rules, fix transactions, etc.)
+   git add .
+   git commit -m "Fix import issues"
+   git checkout main
+   git merge --no-ff import-<uuid>
+   ```
+
+3. **Clean up when done:**
+
+   ```bash
+   git worktree remove /tmp/import-worktree-<uuid>
+   ```
+
+4. **Or use the cleanup tool:**
+   ```bash
+   cleanup-worktrees                 # Removes worktrees >24h old
+   cleanup-worktrees --all true      # Removes all import worktrees
+   cleanup-worktrees --dryRun true   # Preview without removing
+   ```
+
+**Logs:**
+
+- Every import run generates a detailed log: `.memory/import-<timestamp>.md`
+- Log includes all commands, output, timing, and errors
+- Log path is included in import-pipeline output
+- Review the log to understand what failed and why
+
+**Force Cleanup on Error:**
+If you prefer the old behavior (always cleanup, even on error):
+
+```bash
+import-pipeline --keepWorktreeOnError false
+```
 
 ### Rules Files
 

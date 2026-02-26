@@ -30,6 +30,7 @@ export interface ImportPaths {
   done: string;
   unrecognized: string;
   rules: string;
+  logs?: string; // Optional: where to store import logs (default: .memory)
 }
 
 export interface ImportConfig {
@@ -71,6 +72,7 @@ function validatePaths(paths: unknown): ImportPaths {
     done: pathsObj.done as string,
     unrecognized: pathsObj.unrecognized as string,
     rules: pathsObj.rules as string,
+    logs: pathsObj.logs as string | undefined,
   };
 }
 
@@ -278,6 +280,11 @@ export function loadImportConfig(directory: string): ImportConfig {
   const providers: Record<string, ProviderConfig> = {};
   for (const [name, config] of Object.entries(providersObj)) {
     providers[name] = validateProviderConfig(name, config);
+  }
+
+  // Provide default for logs path if not specified
+  if (!paths.logs) {
+    paths.logs = '.memory';
   }
 
   return { paths, providers };

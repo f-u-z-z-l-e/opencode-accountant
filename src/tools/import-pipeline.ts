@@ -16,6 +16,7 @@ import {
   getAllAccountsFromRules,
   ensureAccountDeclarations,
 } from '../utils/accountDeclarations.ts';
+import { createImportLogger, type Logger } from '../utils/logger.js';
 
 /**
  * Arguments for the import-pipeline tool
@@ -31,6 +32,16 @@ export interface ImportPipelineArgs {
   account?: string;
   /** Skip classify step if rules already exist */
   skipClassify?: boolean;
+  /** Keep worktree on error for debugging (default: true) */
+  keepWorktreeOnError?: boolean;
+}
+
+/**
+ * Details for worktree creation step result
+ */
+interface WorktreeStepDetails {
+  path: string;
+  branch: string;
 }
 
 /**
@@ -112,6 +123,9 @@ interface MergeStepDetails {
 interface CleanupStepDetails {
   cleanedAfterSuccess?: boolean;
   cleanedAfterFailure?: boolean;
+  worktreePreserved?: boolean;
+  worktreePath?: string;
+  preserveReason?: string;
   csvCleanup?: {
     deleted: string[];
     errors?: Array<{ file: string; error: string }>;
@@ -134,7 +148,7 @@ export interface ImportPipelineResult {
   success: boolean;
   worktreeId?: string;
   steps: {
-    worktree?: StepResult;
+    worktree?: StepResult<WorktreeStepDetails>;
     sync?: StepResult<SyncStepDetails>;
     classify?: StepResult<ClassifyStepDetails>;
     accountDeclarations?: StepResult<AccountDeclarationsStepDetails>;
@@ -330,13 +344,19 @@ function cleanupIncomingFiles(worktree: WorktreeContext, context: PipelineContex
  */
 export async function executeClassifyStep(
   context: PipelineContext,
-  worktree: WorktreeContext
+  worktree: WorktreeContext,
+  logger?: Logger
 ): Promise<void> {
+  logger?.startSection('Step 2: Classify Transactions');
+  logger?.logStep('Classify', 'start');
+
   if (context.options.skipClassify) {
+    logger?.info('Classification skipped (skipClassify: true)');
     context.result.steps.classify = buildStepResult(
       true,
       'Classification skipped (skipClassify: true)'
     );
+    logger?.endSection();
     return;
   }
 
@@ -355,7 +375,10 @@ export async function executeClassifyStep(
 
   if (classifyParsed.unrecognized?.length > 0) {
     message = `Classification complete with ${classifyParsed.unrecognized.length} unrecognized file(s)`;
+    logger?.warn(`${classifyParsed.unrecognized.length} unrecognized file(s)`);
   }
+
+  logger?.logStep('Classify', success ? 'success' : 'error', message);
 
   const details: ClassifyStepDetails = {
     success,
@@ -364,6 +387,7 @@ export async function executeClassifyStep(
   };
 
   context.result.steps.classify = buildStepResult<ClassifyStepDetails>(success, message, details);
+  logger?.endSection();
 }
 
 /**
@@ -372,8 +396,11 @@ export async function executeClassifyStep(
  */
 export async function executeAccountDeclarationsStep(
   context: PipelineContext,
-  worktree: WorktreeContext
+  worktree: WorktreeContext,
+  logger?: Logger
 ): Promise<void> {
+  logger?.startSection('Step 3: Check Account Declarations');
+  logger?.logStep('Check Accounts', 'start');
   const config = context.configLoader(worktree.path);
   const pendingDir = path.join(worktree.path, config.paths.pending);
   const rulesDir = path.join(worktree.path, config.paths.rules);
@@ -492,6 +519,13 @@ export async function executeAccountDeclarationsStep(
       ? `Added ${result.added.length} account declaration(s) to ${path.relative(worktree.path, yearJournalPath)}`
       : 'All required accounts already declared';
 
+  logger?.logStep('Check Accounts', 'success', message);
+  if (result.added.length > 0) {
+    for (const account of result.added) {
+      logger?.info(`  - ${account}`);
+    }
+  }
+
   context.result.steps.accountDeclarations = buildStepResult<AccountDeclarationsStepDetails>(
     true,
     message,
@@ -501,6 +535,7 @@ export async function executeAccountDeclarationsStep(
       rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
     }
   );
+  logger?.endSection();
 }
 
 /**
@@ -508,8 +543,11 @@ export async function executeAccountDeclarationsStep(
  */
 export async function executeDryRunStep(
   context: PipelineContext,
-  worktree: WorktreeContext
+  worktree: WorktreeContext,
+  logger?: Logger
 ): Promise<void> {
+  logger?.startSection('Step 4: Dry Run Import');
+  logger?.logStep('Dry Run', 'start');
   const inWorktree = (): boolean => true;
   const dryRunResult = await importStatements(
     worktree.path,
@@ -529,12 +567,19 @@ export async function executeDryRunStep(
     ? `Dry run passed: ${dryRunParsed.summary?.totalTransactions || 0} transactions ready`
     : `Dry run failed: ${dryRunParsed.summary?.unknown || 0} unknown account(s)`;
 
+  logger?.logStep('Dry Run', dryRunParsed.success ? 'success' : 'error', message);
+  if (dryRunParsed.summary?.totalTransactions) {
+    logger?.info(`Found ${dryRunParsed.summary.totalTransactions} transactions`);
+  }
+
   context.result.steps.dryRun = buildStepResult<DryRunStepDetails>(dryRunParsed.success, message, {
     success: dryRunParsed.success,
     summary: dryRunParsed.summary,
   });
 
   if (!dryRunParsed.success) {
+    logger?.error('Dry run found unknown accounts or errors');
+    logger?.endSection();
     context.result.error = 'Dry run found unknown accounts or errors';
     context.result.hint = 'Add rules to categorize unknown transactions, then retry';
     throw new Error('Dry run failed');
@@ -542,8 +587,11 @@ export async function executeDryRunStep(
 
   // Early exit if no transactions
   if (dryRunParsed.summary?.totalTransactions === 0) {
+    logger?.endSection();
     throw new NoTransactionsError();
   }
+
+  logger?.endSection();
 }
 
 /**
@@ -551,8 +599,11 @@ export async function executeDryRunStep(
  */
 export async function executeImportStep(
   context: PipelineContext,
-  worktree: WorktreeContext
+  worktree: WorktreeContext,
+  logger?: Logger
 ): Promise<void> {
+  logger?.startSection('Step 5: Import Transactions');
+  logger?.logStep('Import', 'start');
   const inWorktree = (): boolean => true;
   const importResult = await importStatements(
     worktree.path,
@@ -572,6 +623,8 @@ export async function executeImportStep(
     ? `Imported ${importParsed.summary?.totalTransactions || 0} transactions`
     : `Import failed: ${importParsed.error || 'Unknown error'}`;
 
+  logger?.logStep('Import', importParsed.success ? 'success' : 'error', message);
+
   context.result.steps.import = buildStepResult<ImportStepDetails>(importParsed.success, message, {
     success: importParsed.success,
     summary: importParsed.summary,
@@ -579,9 +632,13 @@ export async function executeImportStep(
   });
 
   if (!importParsed.success) {
+    logger?.error('Import failed', new Error(importParsed.error || 'Unknown error'));
+    logger?.endSection();
     context.result.error = `Import failed: ${importParsed.error || 'Unknown error'}`;
     throw new Error('Import failed');
   }
+
+  logger?.endSection();
 }
 
 /**
@@ -589,8 +646,11 @@ export async function executeImportStep(
  */
 export async function executeReconcileStep(
   context: PipelineContext,
-  worktree: WorktreeContext
+  worktree: WorktreeContext,
+  logger?: Logger
 ): Promise<void> {
+  logger?.startSection('Step 6: Reconcile Balance');
+  logger?.logStep('Reconcile', 'start');
   const inWorktree = (): boolean => true;
   const reconcileResult = await reconcileStatement(
     worktree.path,
@@ -611,6 +671,12 @@ export async function executeReconcileStep(
     ? `Balance reconciled: ${reconcileParsed.actualBalance}`
     : `Balance mismatch: expected ${reconcileParsed.expectedBalance}, got ${reconcileParsed.actualBalance}`;
 
+  logger?.logStep('Reconcile', reconcileParsed.success ? 'success' : 'error', message);
+  if (reconcileParsed.success) {
+    logger?.info(`Actual: ${reconcileParsed.actualBalance}`);
+    logger?.info(`Expected: ${reconcileParsed.expectedBalance}`);
+  }
+
   context.result.steps.reconcile = buildStepResult<ReconcileStepDetails>(
     reconcileParsed.success,
     message,
@@ -624,10 +690,14 @@ export async function executeReconcileStep(
   );
 
   if (!reconcileParsed.success) {
+    logger?.error('Reconciliation failed', new Error(reconcileParsed.error || 'Balance mismatch'));
+    logger?.endSection();
     context.result.error = `Reconciliation failed: ${reconcileParsed.error || 'Balance mismatch'}`;
     context.result.hint = 'Check for missing transactions or incorrect rules';
     throw new Error('Reconciliation failed');
   }
+
+  logger?.endSection();
 }
 
 /**
@@ -635,8 +705,11 @@ export async function executeReconcileStep(
  */
 export async function executeMergeStep(
   context: PipelineContext,
-  worktree: WorktreeContext
+  worktree: WorktreeContext,
+  logger?: Logger
 ): Promise<void> {
+  logger?.startSection('Step 7: Merge to Main');
+  logger?.logStep('Merge', 'start');
   const importDetails = context.result.steps.import?.details;
   const reconcileDetails = context.result.steps.reconcile?.details;
 
@@ -659,7 +732,10 @@ export async function executeMergeStep(
   );
 
   try {
+    logger?.info(`Commit message: "${commitMessage}"`);
     mergeWorktree(worktree, commitMessage);
+    logger?.logStep('Merge', 'success', 'Merged to main branch');
+
     const mergeDetails: MergeStepDetails = { commitMessage };
     context.result.steps.merge = buildStepResult<MergeStepDetails>(
       true,
@@ -669,7 +745,11 @@ export async function executeMergeStep(
 
     // Cleanup original files from main repo's incoming directory after successful merge
     cleanupIncomingFiles(worktree, context);
+    logger?.endSection();
   } catch (error) {
+    logger?.logStep('Merge', 'error');
+    logger?.error('Merge to main branch failed', error);
+    logger?.endSection();
     const message = `Merge failed: ${error instanceof Error ? error.message : String(error)}`;
     context.result.steps.merge = buildStepResult(false, message);
     context.result.error = 'Merge to main branch failed';
@@ -704,6 +784,16 @@ export async function importPipeline(
     return restrictionError;
   }
 
+  // Create logger for this import run
+  const logger = createImportLogger(directory, undefined, options.provider);
+
+  logger.startSection('Import Pipeline', 1);
+  logger.info(`Provider filter: ${options.provider || 'all'}`);
+  logger.info(`Currency filter: ${options.currency || 'all'}`);
+  logger.info(`Skip classify: ${options.skipClassify || false}`);
+  logger.info(`Keep worktree on error: ${options.keepWorktreeOnError ?? true}`);
+  logger.info('');
+
   const result: ImportPipelineResult = {
     success: false,
     steps: {},
@@ -719,134 +809,194 @@ export async function importPipeline(
   };
 
   try {
-    return await withWorktree(directory, async (worktree) => {
-      result.worktreeId = worktree.uuid;
-      result.steps.worktree = buildStepResult(true, `Created worktree at ${worktree.path}`, {
-        path: worktree.path,
-        branch: worktree.branch,
-      });
+    return await withWorktree(
+      directory,
+      async (worktree) => {
+        // Set logger context with worktree info
+        logger.setContext('worktreeId', worktree.uuid);
+        logger.setContext('worktreePath', worktree.path);
+        result.worktreeId = worktree.uuid;
+        result.steps.worktree = buildStepResult(true, `Created worktree at ${worktree.path}`, {
+          path: worktree.path,
+          branch: worktree.branch,
+        });
 
-      // Sync CSV files from main repo to worktree
-      try {
-        const config = configLoader(directory);
-        const syncResult = syncCSVFilesToWorktree(directory, worktree.path, config.paths.import);
-
-        if (syncResult.synced.length === 0 && syncResult.errors.length === 0) {
-          result.steps.sync = buildStepResult<SyncStepDetails>(true, 'No CSV files to sync', {
-            synced: [],
-          });
-        } else if (syncResult.errors.length > 0) {
-          result.steps.sync = buildStepResult<SyncStepDetails>(
-            true,
-            `Synced ${syncResult.synced.length} file(s) with ${syncResult.errors.length} error(s)`,
-            { synced: syncResult.synced, errors: syncResult.errors }
-          );
-        } else {
-          result.steps.sync = buildStepResult<SyncStepDetails>(
-            true,
-            `Synced ${syncResult.synced.length} CSV file(s) to worktree`,
-            { synced: syncResult.synced }
-          );
-        }
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        result.steps.sync = buildStepResult<SyncStepDetails>(
-          false,
-          `Failed to sync CSV files: ${errorMsg}`,
-          { synced: [], errors: [{ file: 'unknown', error: errorMsg }] }
-        );
-      }
-
-      try {
-        await executeClassifyStep(context, worktree);
-        await executeAccountDeclarationsStep(context, worktree);
-        await executeDryRunStep(context, worktree);
-        await executeImportStep(context, worktree);
-        await executeReconcileStep(context, worktree);
-
-        // Cleanup CSV files from main repo after successful reconciliation
+        // Sync CSV files from main repo to worktree
+        logger.startSection('Step 1: Sync Files');
+        logger.logStep('Sync Files', 'start');
         try {
           const config = configLoader(directory);
-          const cleanupResult = cleanupProcessedCSVFiles(directory, config.paths.import);
+          const syncResult = syncCSVFilesToWorktree(directory, worktree.path, config.paths.import);
 
-          if (cleanupResult.deleted.length === 0 && cleanupResult.errors.length === 0) {
-            result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-              true,
-              'No CSV files to cleanup',
-              { csvCleanup: { deleted: [] } }
+          if (syncResult.synced.length === 0 && syncResult.errors.length === 0) {
+            logger.logStep('Sync Files', 'success', 'No CSV files to sync');
+            result.steps.sync = buildStepResult<SyncStepDetails>(true, 'No CSV files to sync', {
+              synced: [],
+            });
+          } else if (syncResult.errors.length > 0) {
+            logger.warn(
+              `Synced ${syncResult.synced.length} file(s) with ${syncResult.errors.length} error(s)`
             );
-          } else if (cleanupResult.errors.length > 0) {
-            result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+            result.steps.sync = buildStepResult<SyncStepDetails>(
               true,
-              `Deleted ${cleanupResult.deleted.length} CSV file(s) with ${cleanupResult.errors.length} error(s)`,
+              `Synced ${syncResult.synced.length} file(s) with ${syncResult.errors.length} error(s)`,
+              { synced: syncResult.synced, errors: syncResult.errors }
+            );
+          } else {
+            logger.logStep(
+              'Sync Files',
+              'success',
+              `Synced ${syncResult.synced.length} CSV file(s)`
+            );
+            for (const file of syncResult.synced) {
+              logger.info(`  - ${file}`);
+            }
+            result.steps.sync = buildStepResult<SyncStepDetails>(
+              true,
+              `Synced ${syncResult.synced.length} CSV file(s) to worktree`,
+              { synced: syncResult.synced }
+            );
+          }
+          logger.endSection();
+        } catch (error) {
+          logger.logStep('Sync Files', 'error');
+          logger.error('Failed to sync CSV files', error);
+          logger.endSection();
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          result.steps.sync = buildStepResult<SyncStepDetails>(
+            false,
+            `Failed to sync CSV files: ${errorMsg}`,
+            { synced: [], errors: [{ file: 'unknown', error: errorMsg }] }
+          );
+        }
+
+        try {
+          await executeClassifyStep(context, worktree, logger);
+          await executeAccountDeclarationsStep(context, worktree, logger);
+          await executeDryRunStep(context, worktree, logger);
+          await executeImportStep(context, worktree, logger);
+          await executeReconcileStep(context, worktree, logger);
+
+          // Cleanup CSV files from main repo after successful reconciliation
+          try {
+            const config = configLoader(directory);
+            const cleanupResult = cleanupProcessedCSVFiles(directory, config.paths.import);
+
+            if (cleanupResult.deleted.length === 0 && cleanupResult.errors.length === 0) {
+              result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+                true,
+                'No CSV files to cleanup',
+                { csvCleanup: { deleted: [] } }
+              );
+            } else if (cleanupResult.errors.length > 0) {
+              result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+                true,
+                `Deleted ${cleanupResult.deleted.length} CSV file(s) with ${cleanupResult.errors.length} error(s)`,
+                {
+                  csvCleanup: {
+                    deleted: cleanupResult.deleted,
+                    errors: cleanupResult.errors,
+                  },
+                }
+              );
+            } else {
+              result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+                true,
+                `Deleted ${cleanupResult.deleted.length} CSV file(s) from main repo`,
+                { csvCleanup: { deleted: cleanupResult.deleted } }
+              );
+            }
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            result.steps.cleanup = buildStepResult<CleanupStepDetails>(
+              false,
+              `Failed to cleanup CSV files: ${errorMsg}`,
               {
                 csvCleanup: {
-                  deleted: cleanupResult.deleted,
-                  errors: cleanupResult.errors,
+                  deleted: [],
+                  errors: [{ file: 'unknown', error: errorMsg }],
                 },
               }
             );
-          } else {
-            result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-              true,
-              `Deleted ${cleanupResult.deleted.length} CSV file(s) from main repo`,
-              { csvCleanup: { deleted: cleanupResult.deleted } }
+          }
+
+          await executeMergeStep(context, worktree, logger);
+
+          // Update cleanup step to include worktree cleanup status
+          const existingCleanup = result.steps.cleanup;
+          if (existingCleanup) {
+            existingCleanup.message += ', worktree cleaned up';
+            existingCleanup.details = {
+              ...existingCleanup.details,
+              cleanedAfterSuccess: true,
+            };
+          }
+
+          const transactionCount =
+            context.result.steps.import?.details?.summary?.totalTransactions || 0;
+
+          // Log final summary
+          logger.startSection('Summary');
+          logger.info(`✅ Import completed successfully`);
+          logger.info(`Total transactions imported: ${transactionCount}`);
+          if (context.result.steps.reconcile?.details?.actualBalance) {
+            logger.info(
+              `Balance reconciliation: ✅ Matched (${context.result.steps.reconcile.details.actualBalance})`
             );
           }
+          logger.info(`Log file: ${logger.getLogPath()}`);
+          logger.endSection();
+
+          return buildSuccessResult(
+            result,
+            `Successfully imported ${transactionCount} transaction(s)`
+          );
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const worktreePath = context.result.steps.worktree?.details?.path;
+          const keepWorktree = options.keepWorktreeOnError ?? true;
+
+          logger.error('Pipeline step failed', error);
+
+          if (keepWorktree && worktreePath) {
+            logger.warn(`Worktree preserved at: ${worktreePath}`);
+            logger.info(`To continue manually: cd ${worktreePath}`);
+            logger.info(`To clean up: git worktree remove ${worktreePath}`);
+          }
+
+          logger.info(`Log file: ${logger.getLogPath()}`);
+
           result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-            false,
-            `Failed to cleanup CSV files: ${errorMsg}`,
+            true,
+            keepWorktree
+              ? `Worktree preserved for debugging (CSV files preserved for retry)`
+              : 'Worktree cleaned up after failure (CSV files preserved for retry)',
             {
-              csvCleanup: {
-                deleted: [],
-                errors: [{ file: 'unknown', error: errorMsg }],
-              },
+              cleanedAfterFailure: !keepWorktree,
+              worktreePreserved: keepWorktree,
+              worktreePath: worktreePath,
+              preserveReason: keepWorktree ? 'error occurred' : undefined,
+              csvCleanup: { deleted: [] },
             }
           );
-        }
 
-        await executeMergeStep(context, worktree);
-
-        // Update cleanup step to include worktree cleanup status
-        const existingCleanup = result.steps.cleanup;
-        if (existingCleanup) {
-          existingCleanup.message += ', worktree cleaned up';
-          existingCleanup.details = {
-            ...existingCleanup.details,
-            cleanedAfterSuccess: true,
-          };
-        }
-
-        const transactionCount =
-          context.result.steps.import?.details?.summary?.totalTransactions || 0;
-        return buildSuccessResult(
-          result,
-          `Successfully imported ${transactionCount} transaction(s)`
-        );
-      } catch (error) {
-        result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-          true,
-          'Worktree cleaned up after failure (CSV files preserved for retry)',
-          {
-            cleanedAfterFailure: true,
-            csvCleanup: { deleted: [] },
+          if (error instanceof NoTransactionsError) {
+            return handleNoTransactions(result);
           }
-        );
 
-        if (error instanceof NoTransactionsError) {
-          return handleNoTransactions(result);
+          if (!result.error) {
+            result.error = error instanceof Error ? error.message : String(error);
+          }
+
+          return buildErrorResult(result, result.error, result.hint);
         }
-
-        if (!result.error) {
-          result.error = error instanceof Error ? error.message : String(error);
-        }
-
-        return buildErrorResult(result, result.error, result.hint);
+      },
+      {
+        keepOnError: options.keepWorktreeOnError ?? true,
+        logger: logger,
       }
-    });
+    );
   } catch (error) {
+    logger.error('Pipeline failed', error);
     // Worktree creation failed
     result.steps.worktree = buildStepResult(
       false,
@@ -854,6 +1004,9 @@ export async function importPipeline(
     );
     result.error = 'Failed to create worktree';
     return buildErrorResult(result, result.error);
+  } finally {
+    logger.endSection();
+    await logger.flush();
   }
 }
 
@@ -869,19 +1022,33 @@ This tool orchestrates the full import workflow in an isolated git worktree:
 4. **Import**: Imports transactions to the journal
 5. **Reconcile**: Validates closing balance matches CSV metadata
 6. **Merge**: Merges worktree to main with --no-ff
-7. **Cleanup**: Removes worktree
+7. **Cleanup**: Removes worktree (or preserves on error)
 
 **Safety Features:**
 - All changes happen in isolated worktree
-- If any step fails, worktree is discarded (main branch untouched)
+- If any step fails, worktree is preserved by default for debugging
 - Balance reconciliation ensures data integrity
 - Atomic commit with merge --no-ff preserves history
+
+**Worktree Cleanup:**
+- On success: Worktree is always cleaned up
+- On error (default): Worktree is kept at /tmp/import-worktree-<uuid> for debugging
+- On error (--keepWorktreeOnError false): Worktree is removed (old behavior)
+- Manual cleanup: git worktree remove /tmp/import-worktree-<uuid>
+- Auto cleanup: System reboot (worktrees are in /tmp)
+
+**Logging:**
+- All operations are logged to .memory/import-<timestamp>.md
+- Log includes full command output, timing, and error details
+- Log path is included in tool output for easy access
+- NO console output (avoids polluting OpenCode TUI)
 
 **Usage:**
 - Basic: import-pipeline (processes all pending CSVs)
 - Filtered: import-pipeline --provider ubs --currency chf
 - With manual balance: import-pipeline --closingBalance "CHF 1234.56"
-- Skip classify: import-pipeline --skipClassify true`,
+- Skip classify: import-pipeline --skipClassify true
+- Always cleanup: import-pipeline --keepWorktreeOnError false`,
   args: {
     provider: tool.schema
       .string()
@@ -900,6 +1067,10 @@ This tool orchestrates the full import workflow in an isolated git worktree:
       .boolean()
       .optional()
       .describe('Skip the classify step (default: false)'),
+    keepWorktreeOnError: tool.schema
+      .boolean()
+      .optional()
+      .describe('Keep worktree on error for debugging (default: true)'),
   },
   async execute(params, context) {
     const { directory, agent } = context;
@@ -909,6 +1080,7 @@ This tool orchestrates the full import workflow in an isolated git worktree:
       closingBalance: params.closingBalance,
       account: params.account,
       skipClassify: params.skipClassify,
+      keepWorktreeOnError: params.keepWorktreeOnError,
     });
   },
 });

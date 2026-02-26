@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { Logger } from './logger.js';
 
 /**
  * Context information for an import worktree
@@ -332,17 +333,45 @@ export function listImportWorktrees(repoPath: string): WorktreeContext[] {
  */
 export async function withWorktree<T>(
   directory: string,
-  operation: (worktree: WorktreeContext) => Promise<T>
+  operation: (worktree: WorktreeContext) => Promise<T>,
+  options?: {
+    keepOnError?: boolean;
+    logger?: Logger;
+  }
 ): Promise<T> {
   let createdWorktree: WorktreeContext | null = null;
+  let operationSucceeded = false;
+  const logger = options?.logger;
+  const keepOnError = options?.keepOnError ?? true;
 
   try {
+    logger?.logStep('Create Worktree', 'start');
     createdWorktree = createImportWorktree(directory);
+    logger?.logStep('Create Worktree', 'success', `Path: ${createdWorktree.path}`);
+    logger?.info(`Branch: ${createdWorktree.branch}`);
+    logger?.info(`UUID: ${createdWorktree.uuid}`);
+
     const result = await operation(createdWorktree);
+    operationSucceeded = true;
     return result;
   } finally {
     if (createdWorktree) {
-      removeWorktree(createdWorktree, true);
+      if (operationSucceeded) {
+        // Always cleanup on success
+        logger?.logStep('Cleanup Worktree', 'start');
+        removeWorktree(createdWorktree, true);
+        logger?.logStep('Cleanup Worktree', 'success', 'Worktree removed');
+      } else if (!keepOnError) {
+        // Cleanup on error if explicitly requested (old behavior)
+        logger?.warn('Operation failed, but keepOnError=false, removing worktree');
+        removeWorktree(createdWorktree, true);
+      } else {
+        // Preserve worktree on error (default new behavior)
+        logger?.warn('Operation failed, worktree preserved for debugging');
+        logger?.info(`Worktree path: ${createdWorktree.path}`);
+        logger?.info(`To clean up manually: git worktree remove ${createdWorktree.path}`);
+        logger?.info(`To list all worktrees: git worktree list`);
+      }
     }
   }
 }
