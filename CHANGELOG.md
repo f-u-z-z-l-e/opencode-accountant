@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.1...v0.4.2) (2026-02-26)
+
+
+### Bug Fixes
+
+* Add comprehensive logging and worktree preservation on error ([c1c95fd](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/c1c95fd6b216ad99391f1757f8c0437d2fcecbdd))
+
 ## [0.4.1](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.0...v0.4.1) (2026-02-26)
 
 
