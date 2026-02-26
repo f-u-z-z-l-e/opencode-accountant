@@ -89,9 +89,10 @@ The `import-pipeline` tool provides an **atomic, safe workflow** using git workt
 3. **Automatic Processing**: The tool creates an isolated git worktree and:
    - Syncs CSV files from main repo to worktree
    - Classifies CSV files by provider/currency
+   - Extracts required accounts from rules files and updates year journal
    - Validates all transactions have matching rules
    - Imports transactions to the appropriate year journal
-   - Reconciles closing balance (if available in CSV metadata)
+   - Reconciles closing balance (auto-detected from CSV metadata or data, or manual override)
    - Merges changes back to main branch with `--no-ff`
    - Deletes processed CSV files from main repo's import/incoming
    - Cleans up the worktree
@@ -107,6 +108,25 @@ The `import-pipeline` tool provides an **atomic, safe workflow** using git workt
 - Match CSV to rules file via the `source` directive in each `.rules` file
 - Use field names from the `fields` directive for matching
 - Unknown account pattern: `income:unknown` (positive amounts) / `expenses:unknown` (negative amounts)
+
+### Automatic Account Declarations
+
+The import pipeline automatically:
+
+- Scans matched rules files for all account references (account1, account2 directives)
+- Creates/updates year journal files (e.g., ledger/2026.journal) with sorted account declarations
+- Prevents `hledger check --strict` failures due to missing account declarations
+- No manual account setup required
+
+### Automatic Balance Detection
+
+The reconciliation step attempts to extract closing balance from:
+
+1. CSV header metadata (e.g., UBS "Closing balance:" row)
+2. CSV data analysis (balance field in last transaction row)
+3. Manual override via `closingBalance` parameter (fallback)
+
+For most providers, manual balance input is no longer required.
 
 ## Tool Usage Reference
 
@@ -138,12 +158,13 @@ The following are MCP tools available to you. Always call these tools directly -
 1. Creates isolated git worktree
 2. Syncs CSV files from main repo to worktree
 3. Classifies CSV files (unless `skipClassify: true`)
-4. Validates all transactions have matching rules (dry run)
-5. Imports transactions to year journal
-6. Reconciles closing balance against CSV metadata or manual value
-7. Merges to main with `--no-ff` commit
-8. Deletes processed CSV files from main repo's import/incoming
-9. Cleans up worktree
+4. Extracts accounts from matched rules and updates year journal with declarations
+5. Validates all transactions have matching rules (dry run)
+6. Imports transactions to year journal
+7. Reconciles closing balance (auto-detected from CSV metadata/data or manual override)
+8. Merges to main with `--no-ff` commit
+9. Deletes processed CSV files from main repo's import/incoming
+10. Cleans up worktree
 
 **Output:** Returns step-by-step results with success/failure for each phase
 

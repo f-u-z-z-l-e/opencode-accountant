@@ -9,6 +9,13 @@ import { importStatements } from './import-statements.ts';
 import { reconcileStatement } from './reconcile-statement.ts';
 import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
 import { syncCSVFilesToWorktree, cleanupProcessedCSVFiles } from '../utils/fileUtils.ts';
+import { findRulesForCsv, loadRulesMapping } from '../utils/rulesMatcher.ts';
+import { ensureYearJournalExists, findCsvFiles } from '../utils/journalUtils.ts';
+import { extractTransactionYears } from '../utils/hledgerExecutor.ts';
+import {
+  getAllAccountsFromRules,
+  ensureAccountDeclarations,
+} from '../utils/accountDeclarations.ts';
 
 /**
  * Arguments for the import-pipeline tool
@@ -41,6 +48,15 @@ interface ClassifyStepDetails {
   success: boolean;
   unrecognized?: string[];
   classified?: unknown;
+}
+
+/**
+ * Details for account declarations step result
+ */
+interface AccountDeclarationsStepDetails {
+  accountsAdded: string[];
+  journalUpdated: string;
+  rulesScanned: string[];
 }
 
 /**
@@ -121,6 +137,7 @@ export interface ImportPipelineResult {
     worktree?: StepResult;
     sync?: StepResult<SyncStepDetails>;
     classify?: StepResult<ClassifyStepDetails>;
+    accountDeclarations?: StepResult<AccountDeclarationsStepDetails>;
     dryRun?: StepResult<DryRunStepDetails>;
     import?: StepResult<ImportStepDetails>;
     reconcile?: StepResult<ReconcileStepDetails>;
@@ -347,6 +364,143 @@ export async function executeClassifyStep(
   };
 
   context.result.steps.classify = buildStepResult<ClassifyStepDetails>(success, message, details);
+}
+
+/**
+ * Executes the account declarations step
+ * Scans matched rules files and ensures all required accounts are declared in year journal
+ */
+export async function executeAccountDeclarationsStep(
+  context: PipelineContext,
+  worktree: WorktreeContext
+): Promise<void> {
+  const config = context.configLoader(worktree.path);
+  const pendingDir = path.join(worktree.path, config.paths.pending);
+  const rulesDir = path.join(worktree.path, config.paths.rules);
+
+  // Find CSV files to process
+  const csvFiles = findCsvFiles(pendingDir, context.options.provider, context.options.currency);
+
+  if (csvFiles.length === 0) {
+    context.result.steps.accountDeclarations = buildStepResult<AccountDeclarationsStepDetails>(
+      true,
+      'No CSV files to process',
+      {
+        accountsAdded: [],
+        journalUpdated: '',
+        rulesScanned: [],
+      }
+    );
+    return;
+  }
+
+  // Load rules mapping and find matched rules files
+  const rulesMapping = loadRulesMapping(rulesDir);
+  const matchedRulesFiles = new Set<string>();
+
+  for (const csvFile of csvFiles) {
+    const rulesFile = findRulesForCsv(csvFile, rulesMapping);
+    if (rulesFile) {
+      matchedRulesFiles.add(rulesFile);
+    }
+  }
+
+  if (matchedRulesFiles.size === 0) {
+    context.result.steps.accountDeclarations = buildStepResult<AccountDeclarationsStepDetails>(
+      true,
+      'No matching rules files found',
+      {
+        accountsAdded: [],
+        journalUpdated: '',
+        rulesScanned: [],
+      }
+    );
+    return;
+  }
+
+  // Extract all accounts from matched rules files
+  const allAccounts = getAllAccountsFromRules(Array.from(matchedRulesFiles));
+
+  if (allAccounts.size === 0) {
+    context.result.steps.accountDeclarations = buildStepResult<AccountDeclarationsStepDetails>(
+      true,
+      'No accounts found in rules files',
+      {
+        accountsAdded: [],
+        journalUpdated: '',
+        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
+      }
+    );
+    return;
+  }
+
+  // Determine transaction year from first CSV (assuming single-year constraint)
+  // We need to parse at least one CSV to determine the year
+  let transactionYear: number | undefined;
+
+  for (const rulesFile of matchedRulesFiles) {
+    try {
+      const result = await context.hledgerExecutor(['print', '-f', rulesFile]);
+      if (result.exitCode === 0) {
+        const years = extractTransactionYears(result.stdout);
+        if (years.size > 0) {
+          transactionYear = Array.from(years)[0];
+          break;
+        }
+      }
+    } catch {
+      // Continue to next rules file
+      continue;
+    }
+  }
+
+  if (!transactionYear) {
+    context.result.steps.accountDeclarations = buildStepResult<AccountDeclarationsStepDetails>(
+      false,
+      'Could not determine transaction year from CSV files',
+      {
+        accountsAdded: [],
+        journalUpdated: '',
+        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
+      }
+    );
+    return;
+  }
+
+  // Ensure year journal exists
+  let yearJournalPath: string;
+  try {
+    yearJournalPath = ensureYearJournalExists(worktree.path, transactionYear);
+  } catch (error) {
+    context.result.steps.accountDeclarations = buildStepResult<AccountDeclarationsStepDetails>(
+      false,
+      `Failed to create year journal: ${error instanceof Error ? error.message : String(error)}`,
+      {
+        accountsAdded: [],
+        journalUpdated: '',
+        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
+      }
+    );
+    return;
+  }
+
+  // Add account declarations to year journal
+  const result = ensureAccountDeclarations(yearJournalPath, allAccounts);
+
+  const message =
+    result.added.length > 0
+      ? `Added ${result.added.length} account declaration(s) to ${path.relative(worktree.path, yearJournalPath)}`
+      : 'All required accounts already declared';
+
+  context.result.steps.accountDeclarations = buildStepResult<AccountDeclarationsStepDetails>(
+    true,
+    message,
+    {
+      accountsAdded: result.added,
+      journalUpdated: path.relative(worktree.path, yearJournalPath),
+      rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
+    }
+  );
 }
 
 /**
@@ -605,6 +759,7 @@ export async function importPipeline(
 
       try {
         await executeClassifyStep(context, worktree);
+        await executeAccountDeclarationsStep(context, worktree);
         await executeDryRunStep(context, worktree);
         await executeImportStep(context, worktree);
         await executeReconcileStep(context, worktree);

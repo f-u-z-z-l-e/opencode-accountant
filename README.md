@@ -201,9 +201,10 @@ The `import-pipeline` tool provides an atomic, safe import workflow using git wo
    - Creates an isolated git worktree
    - Syncs CSV files from main repo to worktree
    - Classifies CSV files by provider/currency
+   - Extracts accounts from rules and creates declarations in year journal
    - Validates all transactions have matching rules
    - Imports transactions to the appropriate year journal
-   - Reconciles closing balance (if available in CSV metadata)
+   - Reconciles closing balance (auto-detected from CSV metadata or data analysis)
    - Merges changes back to main branch with `--no-ff`
    - Deletes processed CSV files from main repo's import/incoming
    - Cleans up the worktree
@@ -237,13 +238,30 @@ The tool will use that rules file when processing `transactions.csv`.
 
 See the hledger documentation for details on rules file format and syntax.
 
+#### Account Declarations
+
+The pipeline automatically manages account declarations:
+
+- Scans rules files matched to the CSVs being imported
+- Extracts all accounts (account1 and account2 directives)
+- Creates or updates year journal files with sorted account declarations
+- Ensures `hledger check --strict` validation passes
+
+**No manual account setup required.** Account declarations are created proactively before import attempts.
+
 #### Unknown Postings
 
 When a transaction doesn't match any `if` pattern in the rules file, hledger assigns it to `income:unknown` or `expenses:unknown` depending on the transaction direction. The pipeline will fail at the validation step, reporting the unknown postings so you can add appropriate rules before retrying.
 
 #### Closing Balance Reconciliation
 
-For providers that include closing balance in CSV metadata (e.g., UBS), the tool automatically validates that the imported transactions result in the correct balance. Configure metadata extraction in `providers.yaml`:
+The import pipeline automatically detects closing balance using the following fallback chain:
+
+1. **CSV Metadata Extraction**: For providers with closing balance in metadata (e.g., UBS)
+2. **CSV Data Analysis**: Extracts balance from the last transaction row if metadata unavailable
+3. **Manual Override**: Use the `closingBalance` parameter when automatic detection fails
+
+Configure metadata extraction in `providers.yaml`:
 
 ```yaml
 metadata:
@@ -258,7 +276,10 @@ metadata:
     column: 1
 ```
 
-For providers without closing balance in metadata (e.g., Revolut), provide it manually via the `closingBalance` argument.
+**Note:** For most CSV formats, the closing balance will be detected automatically. Manual override is only needed when:
+
+- CSV has no balance information in metadata or data
+- The auto-detected balance has low confidence
 
 ## Development
 

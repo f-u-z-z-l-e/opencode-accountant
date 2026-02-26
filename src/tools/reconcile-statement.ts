@@ -4,7 +4,7 @@ import * as path from 'path';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { type ImportConfig, loadImportConfig } from '../utils/importConfig.ts';
 import { findRulesForCsv, loadRulesMapping } from '../utils/rulesMatcher.ts';
-import { getAccountFromRulesFile } from '../utils/rulesParser.ts';
+import { getAccountFromRulesFile, parseRulesFile } from '../utils/rulesParser.ts';
 import { isInWorktree } from '../utils/worktreeManager.ts';
 import { detectProvider } from '../utils/providerDetector.ts';
 import {
@@ -14,7 +14,8 @@ import {
   getAccountBalance,
 } from '../utils/hledgerExecutor.ts';
 import { findCsvFiles } from '../utils/journalUtils.ts';
-import { calculateDifference, balancesMatch } from '../utils/balanceUtils.ts';
+import { calculateDifference, balancesMatch, parseAmountValue } from '../utils/balanceUtils.ts';
+import { parseCsvFile } from '../utils/csvParser.ts';
 
 /**
  * Arguments for the reconcile-statement tool
@@ -54,6 +55,7 @@ interface ReconcileResult {
   lastTransactionDate: string;
   csvFile: string;
   metadata?: CsvMetadata;
+  note?: string;
   error?: string;
   hint?: string;
 }
@@ -90,34 +92,6 @@ function buildErrorResult(params: {
     success: false,
     ...params,
   } satisfies Partial<ReconcileResult>);
-}
-
-/**
- * Build a success result for the reconcile-statement tool.
- *
- * Creates a standardized JSON success response.
- *
- * @param params - Success result parameters
- * @param params.csvFile - Path to the CSV file being reconciled
- * @param params.account - The account being reconciled
- * @param params.lastTransactionDate - Date of last transaction
- * @param params.expectedBalance - Expected closing balance
- * @param params.actualBalance - Actual balance from hledger
- * @param params.metadata - CSV metadata (optional)
- * @returns JSON string with success: true
- */
-function buildSuccessResult(params: {
-  csvFile: string;
-  account: string;
-  lastTransactionDate: string;
-  expectedBalance: string;
-  actualBalance: string;
-  metadata?: CsvMetadata;
-}): string {
-  return JSON.stringify({
-    success: true,
-    ...params,
-  } satisfies ReconcileResult);
 }
 
 /**
@@ -207,20 +181,24 @@ function findCsvToReconcile(
  * Determine closing balance from CSV metadata or manual override.
  *
  * Attempts to extract the closing balance from CSV header metadata.
- * Falls back to manual override if provided, or returns error if neither available.
+ * Falls back to manual override if provided, then tries CSV data analysis.
  *
  * @param csvFile - Path to the CSV file
  * @param config - Import configuration
  * @param options - Reconciliation options (may include manual closingBalance)
  * @param relativeCsvPath - Relative path to CSV for error messages
+ * @param rulesDir - Directory containing rules files (for CSV analysis fallback)
  * @returns Closing balance and metadata on success, or error object
  */
 function determineClosingBalance(
   csvFile: string,
   config: ImportConfig,
   options: ReconcileStatementsArgs,
-  relativeCsvPath: string
-): { closingBalance: string; metadata?: CsvMetadata } | { error: string } {
+  relativeCsvPath: string,
+  rulesDir: string
+):
+  | { closingBalance: string; metadata?: CsvMetadata; fromCSVAnalysis?: boolean }
+  | { error: string } {
   // Extract metadata from CSV
   let metadata: CsvMetadata | undefined;
   try {
@@ -243,18 +221,59 @@ function determineClosingBalance(
     }
   }
 
+  // If still no closing balance, try CSV analysis fallback
   if (!closingBalance) {
+    const csvAnalysis = tryExtractClosingBalanceFromCSV(csvFile, rulesDir);
+    if (csvAnalysis && csvAnalysis.confidence === 'high') {
+      closingBalance = csvAnalysis.balance;
+      return { closingBalance, metadata, fromCSVAnalysis: true };
+    }
+  }
+
+  if (!closingBalance) {
+    const retryCmd = buildRetryCommand(options, 'CHF 2324.79', options.account);
     return {
       error: buildErrorResult({
         csvFile: relativeCsvPath,
-        error: 'No closing balance found in CSV metadata',
-        hint: 'Provide closingBalance parameter manually',
+        error: 'No closing balance found in CSV metadata or data',
+        hint: `Provide closingBalance parameter manually. Example retry: ${retryCmd}`,
         metadata,
       }),
     };
   }
 
   return { closingBalance, metadata };
+}
+
+/**
+ * Builds a retry command suggestion for the import-pipeline tool.
+ *
+ * @param options - Original reconciliation options
+ * @param closingBalance - Optional closing balance to include
+ * @param account - Optional account to include
+ * @returns Formatted retry command string
+ */
+function buildRetryCommand(
+  options: ReconcileStatementsArgs,
+  closingBalance?: string,
+  account?: string
+): string {
+  const parts = ['import-pipeline'];
+
+  if (options.provider) {
+    parts.push(`--provider ${options.provider}`);
+  }
+  if (options.currency) {
+    parts.push(`--currency ${options.currency}`);
+  }
+  if (closingBalance) {
+    parts.push(`--closingBalance "${closingBalance}"`);
+  }
+  if (account) {
+    parts.push(`--account "${account}"`);
+  }
+
+  return parts.join(' ');
 }
 
 /**
@@ -292,8 +311,8 @@ function determineAccount(
     const rulesMapping = loadRulesMapping(rulesDir);
     const rulesFile = findRulesForCsv(csvFile, rulesMapping);
     const rulesHint = rulesFile
-      ? `Add 'account1 assets:bank:...' to ${rulesFile} or use --account parameter`
-      : `Create a rules file in ${rulesDir} with 'account1' directive or use --account parameter`;
+      ? `Add 'account1 assets:bank:...' to ${rulesFile} or retry with: ${buildRetryCommand(options, undefined, 'assets:bank:...')}`
+      : `Create a rules file in ${rulesDir} with 'account1' directive or retry with: ${buildRetryCommand(options, undefined, 'assets:bank:...')}`;
     return {
       error: buildErrorResult({
         csvFile: relativeCsvPath,
@@ -305,6 +324,115 @@ function determineAccount(
   }
 
   return { account };
+}
+
+/**
+ * Attempts to extract closing balance from CSV data by analyzing the last transaction.
+ * This is a fallback when CSV metadata doesn't contain closing balance information.
+ *
+ * @param csvFile Path to the CSV file
+ * @param rulesDir Directory containing rules files
+ * @returns Closing balance with confidence level, or null if cannot be determined
+ */
+function tryExtractClosingBalanceFromCSV(
+  csvFile: string,
+  rulesDir: string
+): { balance: string; confidence: 'high' | 'low'; method: string } | null {
+  try {
+    // Find matching rules file
+    const rulesMapping = loadRulesMapping(rulesDir);
+    const rulesFile = findRulesForCsv(csvFile, rulesMapping);
+
+    if (!rulesFile) {
+      return null;
+    }
+
+    // Parse rules file to get CSV configuration
+    const rulesContent = fs.readFileSync(rulesFile, 'utf-8');
+    const rulesConfig = parseRulesFile(rulesContent);
+
+    // Parse CSV file
+    const csvRows = parseCsvFile(csvFile, rulesConfig);
+
+    if (csvRows.length === 0) {
+      return null;
+    }
+
+    // Try to find a balance field in the CSV
+    // Common balance field names
+    const balanceFieldNames = [
+      'balance',
+      'Balance',
+      'BALANCE',
+      'closing_balance',
+      'Closing Balance',
+      'account_balance',
+      'Account Balance',
+      'saldo',
+      'Saldo',
+      'SALDO',
+    ];
+
+    // Check last row for balance field
+    const lastRow = csvRows[csvRows.length - 1];
+    let balanceField: string | undefined;
+    let balanceValue: string | undefined;
+
+    for (const fieldName of balanceFieldNames) {
+      if (lastRow[fieldName] !== undefined && lastRow[fieldName].trim() !== '') {
+        balanceField = fieldName;
+        balanceValue = lastRow[fieldName];
+        break;
+      }
+    }
+
+    if (balanceValue && balanceField) {
+      // Parse the balance value
+      const numericValue = parseAmountValue(balanceValue);
+
+      // Try to detect currency from amount field or balance field itself
+      let currency = '';
+
+      // First check if balance field has currency
+      const balanceCurrencyMatch = balanceValue.match(/[A-Z]{3}/);
+      if (balanceCurrencyMatch) {
+        currency = balanceCurrencyMatch[0];
+      }
+
+      // If no currency in balance, try to detect from amount field
+      if (!currency) {
+        const amountField =
+          rulesConfig.amountFields.single ||
+          rulesConfig.amountFields.credit ||
+          rulesConfig.amountFields.debit;
+        if (amountField) {
+          const amountStr = lastRow[amountField] || '';
+          // Try to extract currency from amount string (e.g., "CHF 100.00" or "100.00 CHF")
+          const currencyMatch = amountStr.match(/[A-Z]{3}/);
+          if (currencyMatch) {
+            currency = currencyMatch[0];
+          }
+        }
+      }
+
+      const balanceStr = currency
+        ? `${currency} ${numericValue.toFixed(2)}`
+        : numericValue.toFixed(2);
+
+      return {
+        balance: balanceStr,
+        confidence: 'high',
+        method: `Extracted from ${balanceField} field in last CSV row`,
+      };
+    }
+
+    // Fallback: Calculate from opening balance + sum of amounts (if available)
+    // This is less reliable as it doesn't account for transactions outside the CSV period
+    return null;
+  } catch {
+    // If anything fails, return null
+    return null;
+  }
 }
 
 /**
@@ -349,11 +477,17 @@ export async function reconcileStatement(
   const { csvFile, relativePath: relativeCsvPath } = csvResult;
 
   // 5. Determine closing balance
-  const balanceResult = determineClosingBalance(csvFile, config, options, relativeCsvPath);
+  const balanceResult = determineClosingBalance(
+    csvFile,
+    config,
+    options,
+    relativeCsvPath,
+    rulesDir
+  );
   if ('error' in balanceResult) {
     return balanceResult.error;
   }
-  const { closingBalance, metadata } = balanceResult;
+  const { closingBalance, metadata, fromCSVAnalysis } = balanceResult;
 
   // 6. Determine account
   const accountResult = determineAccount(csvFile, rulesDir, options, relativeCsvPath, metadata);
@@ -415,14 +549,22 @@ export async function reconcileStatement(
   }
 
   if (doBalancesMatch) {
-    return buildSuccessResult({
+    const result: ReconcileResult = {
+      success: true,
       csvFile: relativeCsvPath,
       account,
       lastTransactionDate,
       expectedBalance: closingBalance,
       actualBalance,
       metadata,
-    });
+    };
+
+    // Add note if closing balance was extracted from CSV analysis
+    if (fromCSVAnalysis) {
+      result.note = `Closing balance auto-detected from CSV data (no metadata available). Account: ${account}`;
+    }
+
+    return JSON.stringify(result);
   }
 
   // 10. Balance mismatch
