@@ -49,6 +49,7 @@ providers:
         done: 'doc/agent/done/import',
         unrecognized: 'statements/import/unrecognized',
         rules: 'ledger/rules',
+        logs: '.memory',
       });
 
       expect(config.providers.revolut).toBeDefined();

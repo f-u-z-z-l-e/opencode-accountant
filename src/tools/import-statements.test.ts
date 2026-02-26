@@ -36,9 +36,6 @@ const createMockHledgerExecutor = (responses: Map<string, HledgerResult>): Hledg
   };
 };
 
-// Mock worktree checker that always returns true (simulating being inside a worktree)
-const inWorktree = () => true;
-
 describe('import-statements', () => {
   beforeEach(() => {
     if (fs.existsSync(testDir)) {
@@ -55,14 +52,7 @@ describe('import-statements', () => {
 
   describe('agent restriction', () => {
     it('should reject calls from non-accountant agents', async () => {
-      const result = await importStatements(
-        testDir,
-        'other-agent',
-        {},
-        undefined,
-        undefined,
-        inWorktree
-      );
+      const result = await importStatements(testDir, 'other-agent', {}, undefined, undefined);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -71,31 +61,11 @@ describe('import-statements', () => {
     });
 
     it('should reject calls from main assistant', async () => {
-      const result = await importStatements(testDir, '', {}, undefined, undefined, inWorktree);
+      const result = await importStatements(testDir, '', {}, undefined, undefined);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
       expect(parsed.caller).toBe('main assistant');
-    });
-  });
-
-  describe('worktree enforcement', () => {
-    const notInWorktree = () => false;
-
-    it('should reject execution outside worktree', async () => {
-      const result = await importStatements(
-        testDir,
-        'accountant',
-        {},
-        undefined,
-        undefined,
-        notInWorktree
-      );
-      const parsed = JSON.parse(result);
-
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('must be run inside an import worktree');
-      expect(parsed.hint).toContain('import-pipeline');
     });
   });
 
@@ -105,14 +75,7 @@ describe('import-statements', () => {
         throw new Error('Config file not found');
       };
 
-      const result = await importStatements(
-        testDir,
-        'accountant',
-        {},
-        mockConfigLoader,
-        undefined,
-        inWorktree
-      );
+      const result = await importStatements(testDir, 'accountant', {}, mockConfigLoader, undefined);
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -136,8 +99,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -162,8 +124,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        undefined,
-        inWorktree
+        undefined
       );
       const parsed = JSON.parse(result);
 
@@ -208,8 +169,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -259,8 +219,7 @@ describe('import-statements', () => {
         'accountant',
         { provider: 'ubs', checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -302,8 +261,7 @@ describe('import-statements', () => {
         'accountant',
         { provider: 'revolut', currency: 'eur', checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -339,8 +297,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: false },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -384,8 +341,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: false },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -440,8 +396,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: false },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -480,8 +435,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: false },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -522,8 +476,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -564,8 +517,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -610,8 +562,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: false },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -666,8 +617,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: false },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -724,8 +674,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: false },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -760,8 +709,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -808,8 +756,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 
@@ -863,8 +810,7 @@ describe('import-statements', () => {
         'accountant',
         { checkOnly: true },
         () => createMockConfig(),
-        mockExecutor,
-        inWorktree
+        mockExecutor
       );
       const parsed = JSON.parse(result);
 

@@ -16,7 +16,6 @@ import {
 } from '../utils/hledgerExecutor.ts';
 import { parseRulesFile } from '../utils/rulesParser.ts';
 import { findMatchingCsvRow, parseCsvFile } from '../utils/csvParser.ts';
-import { isInWorktree } from '../utils/worktreeManager.ts';
 import { ensureYearJournalExists, findCsvFiles } from '../utils/journalUtils.ts';
 
 /**
@@ -319,25 +318,13 @@ export async function importStatements(
     currency?: string;
     checkOnly?: boolean;
   },
-
   configLoader: (configDir: string) => ImportConfig = loadImportConfig,
-  hledgerExecutor: HledgerExecutor = defaultHledgerExecutor,
-
-  worktreeChecker: (dir: string) => boolean = isInWorktree,
-  _logger?: unknown
+  hledgerExecutor: HledgerExecutor = defaultHledgerExecutor
 ): Promise<string> {
   // Agent restriction
   const restrictionError = checkAccountantAgent(agent, 'import statements');
   if (restrictionError) {
     return restrictionError;
-  }
-
-  // Enforce worktree requirement
-  if (!worktreeChecker(directory)) {
-    return buildErrorResult(
-      'import-statements must be run inside an import worktree',
-      'Use import-pipeline tool to orchestrate the full workflow'
-    );
   }
 
   // Load configuration
@@ -548,7 +535,9 @@ This tool processes CSV files in the pending import directory and uses hledger's
 1. Run with checkOnly: true (or no args)
 2. If unknowns found, add rules to the appropriate .rules file
 3. Repeat until no unknowns
-4. Run with checkOnly: false to import`,
+4. Run with checkOnly: false to import
+
+Note: This tool is typically called via import-pipeline for the full workflow.`,
   args: {
     provider: tool.schema
       .string()

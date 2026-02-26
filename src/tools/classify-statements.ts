@@ -4,7 +4,6 @@ import * as path from 'path';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
 import { detectProvider, type DetectionResult } from '../utils/providerDetector.ts';
-import { isInWorktree } from '../utils/worktreeManager.ts';
 import { findCSVFiles, ensureDirectory } from '../utils/fileUtils.ts';
 
 /**
@@ -200,10 +199,7 @@ function executeMoves(
 export async function classifyStatements(
   directory: string,
   agent: string,
-
-  configLoader: (dir: string) => ImportConfig = loadImportConfig,
-
-  worktreeChecker: (dir: string) => boolean = isInWorktree
+  configLoader: (dir: string) => ImportConfig = loadImportConfig
 ): Promise<string> {
   // Agent restriction
   const restrictionError = checkAccountantAgent(agent, 'classify statements', {
@@ -212,14 +208,6 @@ export async function classifyStatements(
   });
   if (restrictionError) {
     return restrictionError;
-  }
-
-  // Enforce worktree requirement
-  if (!worktreeChecker(directory)) {
-    return buildErrorResult(
-      'classify-statements must be run inside an import worktree',
-      'Use import-pipeline tool to orchestrate the full workflow'
-    );
   }
 
   // Load configuration

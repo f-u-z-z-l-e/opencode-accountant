@@ -40,34 +40,14 @@ describe('reconcile-statement tool', () => {
     exitCode: 0,
   });
 
-  // Worktree checker functions for testing
-  const inWorktree = () => true;
-  const notInWorktree = () => false;
-
-  describe('worktree enforcement', () => {
-    it('should reject execution outside worktree', async () => {
+  describe('basic execution', () => {
+    it('should execute when conditions are met', async () => {
       const result = await reconcileStatement(
         '/test/dir',
         'accountant',
         {},
         mockConfigLoader,
-        mockHledgerExecutor,
-        notInWorktree
-      );
-
-      const parsed = JSON.parse(result);
-      expect(parsed.success).toBe(false);
-      expect(parsed.error).toContain('must be run inside an import worktree');
-    });
-
-    it('should allow execution inside worktree', async () => {
-      const result = await reconcileStatement(
-        '/test/dir',
-        'accountant',
-        {},
-        mockConfigLoader,
-        mockHledgerExecutor,
-        inWorktree
+        mockHledgerExecutor
       );
 
       const parsed = JSON.parse(result);
@@ -83,8 +63,7 @@ describe('reconcile-statement tool', () => {
         'developer',
         {},
         mockConfigLoader,
-        mockHledgerExecutor,
-        inWorktree
+        mockHledgerExecutor
       );
 
       expect(result).toContain('restricted');
@@ -99,8 +78,7 @@ describe('reconcile-statement tool', () => {
         'accountant',
         { closingBalance: '1234.56' },
         mockConfigLoader,
-        mockHledgerExecutor,
-        inWorktree
+        mockHledgerExecutor
       );
 
       const parsed = JSON.parse(result);
@@ -119,8 +97,7 @@ describe('reconcile-statement tool', () => {
         'accountant',
         {},
         mockConfigLoader,
-        mockHledgerExecutor,
-        inWorktree
+        mockHledgerExecutor
       );
 
       const parsed = JSON.parse(result);

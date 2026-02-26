@@ -108,30 +108,13 @@ describe('import-pipeline tool', () => {
     });
   });
 
-  describe('worktree creation', () => {
-    it('should create a worktree at the start', async () => {
-      // This will fail later in the pipeline but should create worktree
+  describe('pipeline execution', () => {
+    it('should execute pipeline steps', async () => {
+      // This will fail but should execute initial steps
       const result = await importPipeline(testRepoPath, 'accountant', {}, mockConfigLoader);
 
       const parsed = JSON.parse(result);
-      expect(parsed.worktreeId).toBeDefined();
-      expect(parsed.steps.worktree?.success).toBe(true);
-    });
-
-    it('should clean up worktree on failure', async () => {
-      const result = await importPipeline(testRepoPath, 'accountant', {}, mockConfigLoader);
-
-      const parsed = JSON.parse(result);
-      expect(parsed.steps.cleanup?.success).toBe(true);
-
-      // Verify no import worktrees remain (check for import-<uuid> pattern, not import-pipeline-test)
-      const worktreeList = execSync('git worktree list', {
-        cwd: testRepoPath,
-        encoding: 'utf-8',
-      });
-      // Import worktrees have format: import-<uuid> (36 char uuid)
-      const hasImportWorktree = /import-[0-9a-f]{8}-[0-9a-f]{4}/.test(worktreeList);
-      expect(hasImportWorktree).toBe(false);
+      expect(parsed.steps).toBeDefined();
     });
   });
 
@@ -179,7 +162,6 @@ describe('import-pipeline tool', () => {
       // Should have all expected fields
       expect(parsed).toHaveProperty('success');
       expect(parsed).toHaveProperty('steps');
-      expect(parsed).toHaveProperty('worktreeId');
 
       // Steps should be objects
       expect(typeof parsed.steps).toBe('object');

@@ -1,14 +1,11 @@
 import { tool } from '@opencode-ai/plugin';
-import * as fs from 'fs';
 import * as path from 'path';
 import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { loadImportConfig, type ImportConfig } from '../utils/importConfig.ts';
-import { mergeWorktree, withWorktree, type WorktreeContext } from '../utils/worktreeManager.ts';
 import { classifyStatements } from './classify-statements.ts';
 import { importStatements } from './import-statements.ts';
 import { reconcileStatement } from './reconcile-statement.ts';
 import { defaultHledgerExecutor, type HledgerExecutor } from '../utils/hledgerExecutor.ts';
-import { syncCSVFilesToWorktree, cleanupProcessedCSVFiles } from '../utils/fileUtils.ts';
 import { findRulesForCsv, loadRulesMapping } from '../utils/rulesMatcher.ts';
 import { ensureYearJournalExists, findCsvFiles } from '../utils/journalUtils.ts';
 import { extractTransactionYears } from '../utils/hledgerExecutor.ts';
@@ -32,24 +29,6 @@ export interface ImportPipelineArgs {
   account?: string;
   /** Skip classify step if rules already exist */
   skipClassify?: boolean;
-  /** Keep worktree on error for debugging (default: true) */
-  keepWorktreeOnError?: boolean;
-}
-
-/**
- * Details for worktree creation step result
- */
-interface WorktreeStepDetails {
-  path: string;
-  branch: string;
-}
-
-/**
- * Details for CSV sync step result
- */
-interface SyncStepDetails {
-  synced: string[];
-  errors?: Array<{ file: string; error: string }>;
 }
 
 /**
@@ -111,28 +90,6 @@ interface ReconcileStepDetails {
 }
 
 /**
- * Details for merge step result
- */
-interface MergeStepDetails {
-  commitMessage: string;
-}
-
-/**
- * Details for cleanup step result
- */
-interface CleanupStepDetails {
-  cleanedAfterSuccess?: boolean;
-  cleanedAfterFailure?: boolean;
-  worktreePreserved?: boolean;
-  worktreePath?: string;
-  preserveReason?: string;
-  csvCleanup?: {
-    deleted: string[];
-    errors?: Array<{ file: string; error: string }>;
-  };
-}
-
-/**
  * Result of a single pipeline step
  */
 interface StepResult<T = unknown> {
@@ -146,17 +103,12 @@ interface StepResult<T = unknown> {
  */
 export interface ImportPipelineResult {
   success: boolean;
-  worktreeId?: string;
   steps: {
-    worktree?: StepResult<WorktreeStepDetails>;
-    sync?: StepResult<SyncStepDetails>;
     classify?: StepResult<ClassifyStepDetails>;
     accountDeclarations?: StepResult<AccountDeclarationsStepDetails>;
     dryRun?: StepResult<DryRunStepDetails>;
     import?: StepResult<ImportStepDetails>;
     reconcile?: StepResult<ReconcileStepDetails>;
-    merge?: StepResult<MergeStepDetails>;
-    cleanup?: StepResult<CleanupStepDetails>;
   };
   summary?: string;
   error?: string;
@@ -291,63 +243,13 @@ export function buildCommitMessage(
 }
 
 /**
- * Clean up original files from main repo's import/incoming/ directory.
- * This runs after successful merge to remove files that were successfully imported.
- */
-function cleanupIncomingFiles(worktree: WorktreeContext, context: PipelineContext): void {
-  const incomingDir = path.join(worktree.mainRepoPath, 'import/incoming');
-
-  if (!fs.existsSync(incomingDir)) {
-    return;
-  }
-
-  // Extract filenames from import step results
-  const importStep = context.result.steps.import;
-  if (!importStep?.success || !importStep.details) {
-    return;
-  }
-
-  const importResult = importStep.details as ImportStepDetails;
-  if (!importResult.files || !Array.isArray(importResult.files)) {
-    return;
-  }
-
-  let deletedCount = 0;
-  for (const fileResult of importResult.files) {
-    if (!fileResult.csv) continue;
-
-    // Extract just the filename from the path
-    const filename = path.basename(fileResult.csv);
-    const filePath = path.join(incomingDir, filename);
-
-    if (fs.existsSync(filePath)) {
-      try {
-        fs.unlinkSync(filePath);
-        deletedCount++;
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error(
-          `[ERROR] Failed to delete ${filename}: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    }
-  }
-
-  if (deletedCount > 0) {
-    // eslint-disable-next-line no-console
-    console.log(`[INFO] Cleaned up ${deletedCount} file(s) from import/incoming/`);
-  }
-}
-
-/**
  * Executes the classify step
  */
 export async function executeClassifyStep(
   context: PipelineContext,
-  worktree: WorktreeContext,
   logger?: Logger
 ): Promise<void> {
-  logger?.startSection('Step 2: Classify Transactions');
+  logger?.startSection('Step 1: Classify Transactions');
   logger?.logStep('Classify', 'start');
 
   if (context.options.skipClassify) {
@@ -360,12 +262,10 @@ export async function executeClassifyStep(
     return;
   }
 
-  const inWorktree = (): boolean => true;
   const classifyResult = await classifyStatements(
-    worktree.path,
+    context.directory,
     context.agent,
-    context.configLoader,
-    inWorktree
+    context.configLoader
   );
 
   const classifyParsed = JSON.parse(classifyResult);
@@ -396,14 +296,13 @@ export async function executeClassifyStep(
  */
 export async function executeAccountDeclarationsStep(
   context: PipelineContext,
-  worktree: WorktreeContext,
   logger?: Logger
 ): Promise<void> {
-  logger?.startSection('Step 3: Check Account Declarations');
+  logger?.startSection('Step 2: Check Account Declarations');
   logger?.logStep('Check Accounts', 'start');
-  const config = context.configLoader(worktree.path);
-  const pendingDir = path.join(worktree.path, config.paths.pending);
-  const rulesDir = path.join(worktree.path, config.paths.rules);
+  const config = context.configLoader(context.directory);
+  const pendingDir = path.join(context.directory, config.paths.pending);
+  const rulesDir = path.join(context.directory, config.paths.rules);
 
   // Find CSV files to process
   const csvFiles = findCsvFiles(pendingDir, context.options.provider, context.options.currency);
@@ -455,7 +354,7 @@ export async function executeAccountDeclarationsStep(
       {
         accountsAdded: [],
         journalUpdated: '',
-        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
+        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(context.directory, f)),
       }
     );
     return;
@@ -488,7 +387,7 @@ export async function executeAccountDeclarationsStep(
       {
         accountsAdded: [],
         journalUpdated: '',
-        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
+        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(context.directory, f)),
       }
     );
     return;
@@ -497,7 +396,7 @@ export async function executeAccountDeclarationsStep(
   // Ensure year journal exists
   let yearJournalPath: string;
   try {
-    yearJournalPath = ensureYearJournalExists(worktree.path, transactionYear);
+    yearJournalPath = ensureYearJournalExists(context.directory, transactionYear);
   } catch (error) {
     context.result.steps.accountDeclarations = buildStepResult<AccountDeclarationsStepDetails>(
       false,
@@ -505,7 +404,7 @@ export async function executeAccountDeclarationsStep(
       {
         accountsAdded: [],
         journalUpdated: '',
-        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
+        rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(context.directory, f)),
       }
     );
     return;
@@ -516,7 +415,7 @@ export async function executeAccountDeclarationsStep(
 
   const message =
     result.added.length > 0
-      ? `Added ${result.added.length} account declaration(s) to ${path.relative(worktree.path, yearJournalPath)}`
+      ? `Added ${result.added.length} account declaration(s) to ${path.relative(context.directory, yearJournalPath)}`
       : 'All required accounts already declared';
 
   logger?.logStep('Check Accounts', 'success', message);
@@ -531,8 +430,8 @@ export async function executeAccountDeclarationsStep(
     message,
     {
       accountsAdded: result.added,
-      journalUpdated: path.relative(worktree.path, yearJournalPath),
-      rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(worktree.path, f)),
+      journalUpdated: path.relative(context.directory, yearJournalPath),
+      rulesScanned: Array.from(matchedRulesFiles).map((f) => path.relative(context.directory, f)),
     }
   );
   logger?.endSection();
@@ -541,16 +440,11 @@ export async function executeAccountDeclarationsStep(
 /**
  * Executes the dry run step
  */
-export async function executeDryRunStep(
-  context: PipelineContext,
-  worktree: WorktreeContext,
-  logger?: Logger
-): Promise<void> {
-  logger?.startSection('Step 4: Dry Run Import');
+export async function executeDryRunStep(context: PipelineContext, logger?: Logger): Promise<void> {
+  logger?.startSection('Step 3: Dry Run Import');
   logger?.logStep('Dry Run', 'start');
-  const inWorktree = (): boolean => true;
   const dryRunResult = await importStatements(
-    worktree.path,
+    context.directory,
     context.agent,
     {
       provider: context.options.provider,
@@ -558,8 +452,7 @@ export async function executeDryRunStep(
       checkOnly: true,
     },
     context.configLoader,
-    context.hledgerExecutor,
-    inWorktree
+    context.hledgerExecutor
   );
 
   const dryRunParsed = JSON.parse(dryRunResult);
@@ -597,16 +490,11 @@ export async function executeDryRunStep(
 /**
  * Executes the import step
  */
-export async function executeImportStep(
-  context: PipelineContext,
-  worktree: WorktreeContext,
-  logger?: Logger
-): Promise<void> {
-  logger?.startSection('Step 5: Import Transactions');
+export async function executeImportStep(context: PipelineContext, logger?: Logger): Promise<void> {
+  logger?.startSection('Step 4: Import Transactions');
   logger?.logStep('Import', 'start');
-  const inWorktree = (): boolean => true;
   const importResult = await importStatements(
-    worktree.path,
+    context.directory,
     context.agent,
     {
       provider: context.options.provider,
@@ -614,8 +502,7 @@ export async function executeImportStep(
       checkOnly: false,
     },
     context.configLoader,
-    context.hledgerExecutor,
-    inWorktree
+    context.hledgerExecutor
   );
 
   const importParsed = JSON.parse(importResult);
@@ -646,14 +533,12 @@ export async function executeImportStep(
  */
 export async function executeReconcileStep(
   context: PipelineContext,
-  worktree: WorktreeContext,
   logger?: Logger
 ): Promise<void> {
-  logger?.startSection('Step 6: Reconcile Balance');
+  logger?.startSection('Step 5: Reconcile Balance');
   logger?.logStep('Reconcile', 'start');
-  const inWorktree = (): boolean => true;
   const reconcileResult = await reconcileStatement(
-    worktree.path,
+    context.directory,
     context.agent,
     {
       provider: context.options.provider,
@@ -662,8 +547,7 @@ export async function executeReconcileStep(
       account: context.options.account,
     },
     context.configLoader,
-    context.hledgerExecutor,
-    inWorktree
+    context.hledgerExecutor
   );
 
   const reconcileParsed = JSON.parse(reconcileResult);
@@ -701,69 +585,11 @@ export async function executeReconcileStep(
 }
 
 /**
- * Executes the merge step
- */
-export async function executeMergeStep(
-  context: PipelineContext,
-  worktree: WorktreeContext,
-  logger?: Logger
-): Promise<void> {
-  logger?.startSection('Step 7: Merge to Main');
-  logger?.logStep('Merge', 'start');
-  const importDetails = context.result.steps.import?.details;
-  const reconcileDetails = context.result.steps.reconcile?.details;
-
-  if (!importDetails || !reconcileDetails) {
-    throw new Error('Import or reconcile step not completed before merge');
-  }
-
-  const commitInfo = {
-    fromDate: reconcileDetails.metadata?.['from-date'],
-    untilDate: reconcileDetails.metadata?.['until-date'],
-  };
-  const transactionCount = importDetails.summary?.totalTransactions || 0;
-
-  const commitMessage = buildCommitMessage(
-    context.options.provider,
-    context.options.currency,
-    commitInfo.fromDate,
-    commitInfo.untilDate,
-    transactionCount
-  );
-
-  try {
-    logger?.info(`Commit message: "${commitMessage}"`);
-    mergeWorktree(worktree, commitMessage);
-    logger?.logStep('Merge', 'success', 'Merged to main branch');
-
-    const mergeDetails: MergeStepDetails = { commitMessage };
-    context.result.steps.merge = buildStepResult<MergeStepDetails>(
-      true,
-      `Merged to main: "${commitMessage}"`,
-      mergeDetails
-    );
-
-    // Cleanup original files from main repo's incoming directory after successful merge
-    cleanupIncomingFiles(worktree, context);
-    logger?.endSection();
-  } catch (error) {
-    logger?.logStep('Merge', 'error');
-    logger?.error('Merge to main branch failed', error);
-    logger?.endSection();
-    const message = `Merge failed: ${error instanceof Error ? error.message : String(error)}`;
-    context.result.steps.merge = buildStepResult(false, message);
-    context.result.error = 'Merge to main branch failed';
-    throw new Error('Merge failed');
-  }
-}
-
-/**
  * Handles the no transactions scenario
  */
 function handleNoTransactions(result: ImportPipelineResult): string {
   result.steps.import = buildStepResult(true, 'No transactions to import');
   result.steps.reconcile = buildStepResult(true, 'Reconciliation skipped (no transactions)');
-  result.steps.merge = buildStepResult(true, 'Merge skipped (no changes)');
 
   return buildSuccessResult(result, 'No transactions found to import');
 }
@@ -791,7 +617,6 @@ export async function importPipeline(
   logger.info(`Provider filter: ${options.provider || 'all'}`);
   logger.info(`Currency filter: ${options.currency || 'all'}`);
   logger.info(`Skip classify: ${options.skipClassify || false}`);
-  logger.info(`Keep worktree on error: ${options.keepWorktreeOnError ?? true}`);
   logger.info('');
 
   const result: ImportPipelineResult = {
@@ -809,201 +634,38 @@ export async function importPipeline(
   };
 
   try {
-    return await withWorktree(
-      directory,
-      async (worktree) => {
-        // Set logger context with worktree info
-        logger.setContext('worktreeId', worktree.uuid);
-        logger.setContext('worktreePath', worktree.path);
-        result.worktreeId = worktree.uuid;
-        result.steps.worktree = buildStepResult(true, `Created worktree at ${worktree.path}`, {
-          path: worktree.path,
-          branch: worktree.branch,
-        });
+    await executeClassifyStep(context, logger);
+    await executeAccountDeclarationsStep(context, logger);
+    await executeDryRunStep(context, logger);
+    await executeImportStep(context, logger);
+    await executeReconcileStep(context, logger);
 
-        // Sync CSV files from main repo to worktree
-        logger.startSection('Step 1: Sync Files');
-        logger.logStep('Sync Files', 'start');
-        try {
-          const config = configLoader(directory);
-          const syncResult = syncCSVFilesToWorktree(directory, worktree.path, config.paths.import);
+    const transactionCount = context.result.steps.import?.details?.summary?.totalTransactions || 0;
 
-          if (syncResult.synced.length === 0 && syncResult.errors.length === 0) {
-            logger.logStep('Sync Files', 'success', 'No CSV files to sync');
-            result.steps.sync = buildStepResult<SyncStepDetails>(true, 'No CSV files to sync', {
-              synced: [],
-            });
-          } else if (syncResult.errors.length > 0) {
-            logger.warn(
-              `Synced ${syncResult.synced.length} file(s) with ${syncResult.errors.length} error(s)`
-            );
-            result.steps.sync = buildStepResult<SyncStepDetails>(
-              true,
-              `Synced ${syncResult.synced.length} file(s) with ${syncResult.errors.length} error(s)`,
-              { synced: syncResult.synced, errors: syncResult.errors }
-            );
-          } else {
-            logger.logStep(
-              'Sync Files',
-              'success',
-              `Synced ${syncResult.synced.length} CSV file(s)`
-            );
-            for (const file of syncResult.synced) {
-              logger.info(`  - ${file}`);
-            }
-            result.steps.sync = buildStepResult<SyncStepDetails>(
-              true,
-              `Synced ${syncResult.synced.length} CSV file(s) to worktree`,
-              { synced: syncResult.synced }
-            );
-          }
-          logger.endSection();
-        } catch (error) {
-          logger.logStep('Sync Files', 'error');
-          logger.error('Failed to sync CSV files', error);
-          logger.endSection();
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          result.steps.sync = buildStepResult<SyncStepDetails>(
-            false,
-            `Failed to sync CSV files: ${errorMsg}`,
-            { synced: [], errors: [{ file: 'unknown', error: errorMsg }] }
-          );
-        }
+    // Log final summary
+    logger.startSection('Summary');
+    logger.info(`Import completed successfully`);
+    logger.info(`Total transactions imported: ${transactionCount}`);
+    if (context.result.steps.reconcile?.details?.actualBalance) {
+      logger.info(`Balance: ${context.result.steps.reconcile.details.actualBalance}`);
+    }
+    logger.info(`Log file: ${logger.getLogPath()}`);
+    logger.endSection();
 
-        try {
-          await executeClassifyStep(context, worktree, logger);
-          await executeAccountDeclarationsStep(context, worktree, logger);
-          await executeDryRunStep(context, worktree, logger);
-          await executeImportStep(context, worktree, logger);
-          await executeReconcileStep(context, worktree, logger);
-
-          // Cleanup CSV files from main repo after successful reconciliation
-          try {
-            const config = configLoader(directory);
-            const cleanupResult = cleanupProcessedCSVFiles(directory, config.paths.import);
-
-            if (cleanupResult.deleted.length === 0 && cleanupResult.errors.length === 0) {
-              result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-                true,
-                'No CSV files to cleanup',
-                { csvCleanup: { deleted: [] } }
-              );
-            } else if (cleanupResult.errors.length > 0) {
-              result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-                true,
-                `Deleted ${cleanupResult.deleted.length} CSV file(s) with ${cleanupResult.errors.length} error(s)`,
-                {
-                  csvCleanup: {
-                    deleted: cleanupResult.deleted,
-                    errors: cleanupResult.errors,
-                  },
-                }
-              );
-            } else {
-              result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-                true,
-                `Deleted ${cleanupResult.deleted.length} CSV file(s) from main repo`,
-                { csvCleanup: { deleted: cleanupResult.deleted } }
-              );
-            }
-          } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-              false,
-              `Failed to cleanup CSV files: ${errorMsg}`,
-              {
-                csvCleanup: {
-                  deleted: [],
-                  errors: [{ file: 'unknown', error: errorMsg }],
-                },
-              }
-            );
-          }
-
-          await executeMergeStep(context, worktree, logger);
-
-          // Update cleanup step to include worktree cleanup status
-          const existingCleanup = result.steps.cleanup;
-          if (existingCleanup) {
-            existingCleanup.message += ', worktree cleaned up';
-            existingCleanup.details = {
-              ...existingCleanup.details,
-              cleanedAfterSuccess: true,
-            };
-          }
-
-          const transactionCount =
-            context.result.steps.import?.details?.summary?.totalTransactions || 0;
-
-          // Log final summary
-          logger.startSection('Summary');
-          logger.info(`✅ Import completed successfully`);
-          logger.info(`Total transactions imported: ${transactionCount}`);
-          if (context.result.steps.reconcile?.details?.actualBalance) {
-            logger.info(
-              `Balance reconciliation: ✅ Matched (${context.result.steps.reconcile.details.actualBalance})`
-            );
-          }
-          logger.info(`Log file: ${logger.getLogPath()}`);
-          logger.endSection();
-
-          return buildSuccessResult(
-            result,
-            `Successfully imported ${transactionCount} transaction(s)`
-          );
-        } catch (error) {
-          const worktreePath = context.result.steps.worktree?.details?.path;
-          const keepWorktree = options.keepWorktreeOnError ?? true;
-
-          logger.error('Pipeline step failed', error);
-
-          if (keepWorktree && worktreePath) {
-            logger.warn(`Worktree preserved at: ${worktreePath}`);
-            logger.info(`To continue manually: cd ${worktreePath}`);
-            logger.info(`To clean up: git worktree remove ${worktreePath}`);
-          }
-
-          logger.info(`Log file: ${logger.getLogPath()}`);
-
-          result.steps.cleanup = buildStepResult<CleanupStepDetails>(
-            true,
-            keepWorktree
-              ? `Worktree preserved for debugging (CSV files preserved for retry)`
-              : 'Worktree cleaned up after failure (CSV files preserved for retry)',
-            {
-              cleanedAfterFailure: !keepWorktree,
-              worktreePreserved: keepWorktree,
-              worktreePath: worktreePath,
-              preserveReason: keepWorktree ? 'error occurred' : undefined,
-              csvCleanup: { deleted: [] },
-            }
-          );
-
-          if (error instanceof NoTransactionsError) {
-            return handleNoTransactions(result);
-          }
-
-          if (!result.error) {
-            result.error = error instanceof Error ? error.message : String(error);
-          }
-
-          return buildErrorResult(result, result.error, result.hint);
-        }
-      },
-      {
-        keepOnError: options.keepWorktreeOnError ?? true,
-        logger: logger,
-      }
-    );
+    return buildSuccessResult(result, `Successfully imported ${transactionCount} transaction(s)`);
   } catch (error) {
-    logger.error('Pipeline failed', error);
-    // Worktree creation failed
-    result.steps.worktree = buildStepResult(
-      false,
-      `Failed to create worktree: ${error instanceof Error ? error.message : String(error)}`
-    );
-    result.error = 'Failed to create worktree';
-    return buildErrorResult(result, result.error);
+    logger.error('Pipeline step failed', error);
+    logger.info(`Log file: ${logger.getLogPath()}`);
+
+    if (error instanceof NoTransactionsError) {
+      return handleNoTransactions(result);
+    }
+
+    if (!result.error) {
+      result.error = error instanceof Error ? error.message : String(error);
+    }
+
+    return buildErrorResult(result, result.error, result.hint);
   } finally {
     logger.endSection();
     await logger.flush();
@@ -1011,44 +673,31 @@ export async function importPipeline(
 }
 
 export default tool({
-  description: `ACCOUNTANT AGENT ONLY: Complete import pipeline with git worktree isolation and balance reconciliation.
+  description: `ACCOUNTANT AGENT ONLY: Complete import pipeline with balance reconciliation.
 
-This tool orchestrates the full import workflow in an isolated git worktree:
+This tool orchestrates the full import workflow:
 
 **Pipeline Steps:**
-1. **Create Worktree**: Creates an isolated git worktree for safe import
-2. **Classify**: Moves CSVs from import to pending directory (optional, skip with skipClassify)
+1. **Classify**: Moves CSVs from import/incoming to import/pending (optional, skip with skipClassify)
+2. **Account Declarations**: Ensures all required accounts are declared in year journal
 3. **Dry Run**: Validates all transactions have known accounts
-4. **Import**: Imports transactions to the journal
+4. **Import**: Imports transactions to the journal (moves CSVs to import/done)
 5. **Reconcile**: Validates closing balance matches CSV metadata
-6. **Merge**: Merges worktree to main with --no-ff
-7. **Cleanup**: Removes worktree (or preserves on error)
 
-**Safety Features:**
-- All changes happen in isolated worktree
-- If any step fails, worktree is preserved by default for debugging
-- Balance reconciliation ensures data integrity
-- Atomic commit with merge --no-ff preserves history
-
-**Worktree Cleanup:**
-- On success: Worktree is always cleaned up
-- On error (default): Worktree is kept at /tmp/import-worktree-<uuid> for debugging
-- On error (--keepWorktreeOnError false): Worktree is removed (old behavior)
-- Manual cleanup: git worktree remove /tmp/import-worktree-<uuid>
-- Auto cleanup: System reboot (worktrees are in /tmp)
+**Important:**
+- All changes remain uncommitted in your working directory
+- If any step fails, changes remain in place for inspection
+- CSV files move from incoming/ → pending/ → done/ during the process
 
 **Logging:**
-- All operations are logged to .memory/import-<timestamp>.md
-- Log includes full command output, timing, and error details
-- Log path is included in tool output for easy access
-- NO console output (avoids polluting OpenCode TUI)
+- All operations logged to .memory/import-<timestamp>.md
+- Log includes command output, timing, and error details
 
 **Usage:**
-- Basic: import-pipeline (processes all pending CSVs)
+- Basic: import-pipeline (processes all CSVs in incoming/)
 - Filtered: import-pipeline --provider ubs --currency chf
-- With manual balance: import-pipeline --closingBalance "CHF 1234.56"
-- Skip classify: import-pipeline --skipClassify true
-- Always cleanup: import-pipeline --keepWorktreeOnError false`,
+- Manual balance: import-pipeline --closingBalance "CHF 1234.56"
+- Skip classify: import-pipeline --skipClassify true`,
   args: {
     provider: tool.schema
       .string()
@@ -1067,10 +716,6 @@ This tool orchestrates the full import workflow in an isolated git worktree:
       .boolean()
       .optional()
       .describe('Skip the classify step (default: false)'),
-    keepWorktreeOnError: tool.schema
-      .boolean()
-      .optional()
-      .describe('Keep worktree on error for debugging (default: true)'),
   },
   async execute(params, context) {
     const { directory, agent } = context;
@@ -1080,7 +725,6 @@ This tool orchestrates the full import workflow in an isolated git worktree:
       closingBalance: params.closingBalance,
       account: params.account,
       skipClassify: params.skipClassify,
-      keepWorktreeOnError: params.keepWorktreeOnError,
     });
   },
 });

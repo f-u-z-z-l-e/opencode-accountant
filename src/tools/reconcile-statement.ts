@@ -5,7 +5,6 @@ import { checkAccountantAgent } from '../utils/agentRestriction.ts';
 import { type ImportConfig, loadImportConfig } from '../utils/importConfig.ts';
 import { findRulesForCsv, loadRulesMapping } from '../utils/rulesMatcher.ts';
 import { getAccountFromRulesFile, parseRulesFile } from '../utils/rulesParser.ts';
-import { isInWorktree } from '../utils/worktreeManager.ts';
 import { detectProvider } from '../utils/providerDetector.ts';
 import {
   defaultHledgerExecutor,
@@ -92,29 +91,6 @@ function buildErrorResult(params: {
     success: false,
     ...params,
   } satisfies Partial<ReconcileResult>);
-}
-
-/**
- * Validate that the directory is an import worktree.
- *
- * Ensures the tool is being run in the correct context (inside an import worktree).
- *
- * @param directory - Directory to check
- * @param worktreeChecker - Function that checks if directory is a worktree
- * @returns Error result string if validation fails, null if valid
- */
-function validateWorktree(
-  directory: string,
-
-  worktreeChecker: (dir: string) => boolean
-): string | null {
-  if (!worktreeChecker(directory)) {
-    return buildErrorResult({
-      error: 'reconcile-statement must be run inside an import worktree',
-      hint: 'Use import-pipeline tool to orchestrate the full workflow',
-    });
-  }
-  return null;
 }
 
 /**
@@ -444,8 +420,7 @@ export async function reconcileStatement(
   agent: string,
   options: ReconcileStatementsArgs,
   configLoader: (configDir: string) => ImportConfig = loadImportConfig,
-  hledgerExecutor: HledgerExecutor = defaultHledgerExecutor,
-  worktreeChecker: (dir: string) => boolean = isInWorktree
+  hledgerExecutor: HledgerExecutor = defaultHledgerExecutor
 ): Promise<string> {
   // 1. Agent restriction
   const restrictionError = checkAccountantAgent(agent, 'reconcile statement');
@@ -453,13 +428,7 @@ export async function reconcileStatement(
     return restrictionError;
   }
 
-  // 2. Validate worktree
-  const worktreeError = validateWorktree(directory, worktreeChecker);
-  if (worktreeError) {
-    return worktreeError;
-  }
-
-  // 3. Load configuration
+  // 2. Load configuration
   const configResult = loadConfiguration(directory, configLoader);
   if ('error' in configResult) {
     return configResult.error;
@@ -601,7 +570,6 @@ export default tool({
   description: `ACCOUNTANT AGENT ONLY: Reconcile imported bank statement against closing balance.
 
 This tool validates that the imported transactions result in the correct closing balance.
-It must be run inside an import worktree (use import-pipeline for the full workflow).
 
 **Workflow:**
 1. Finds the most recently imported CSV in the done directory
