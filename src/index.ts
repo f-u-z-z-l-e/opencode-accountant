@@ -22,7 +22,7 @@ const AccountantPlugin: Plugin = async () => {
       'classify-statements': classifyStatements,
       'import-statements': importStatements,
       'reconcile-statements': reconcileStatement,
-      'import-piprline': importPipeline,
+      'import-pipeline': importPipeline,
     },
     config: async (config: Record<string, unknown>): Promise<void> => {
       if (agent) {
