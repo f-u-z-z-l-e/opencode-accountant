@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { UnknownPosting, UnknownPostingWithSuggestion } from './hledgerExecutor.ts';
 import { loadAgent } from './agentLoader.ts';
+import type { Logger } from './logger.js';
 
 /**
  * Context needed for generating account suggestions
@@ -18,6 +19,7 @@ export interface SuggestionContext {
   rulesFilePath?: string;
   existingRules?: RulePattern[];
   yearJournalPath?: string;
+  logger?: Logger;
 }
 
 /**
@@ -258,9 +260,8 @@ export async function suggestAccountsForPostingsBatch(
     }
   });
 
-  // eslint-disable-next-line no-console
-  console.log(
-    `[INFO] Account suggestions: ${cachedResults.size} cached, ${uncachedPostings.length} to generate`
+  context.logger?.info(
+    `Account suggestions: ${cachedResults.size} cached, ${uncachedPostings.length} to generate`
   );
 
   // Generate suggestions for uncached postings
@@ -285,14 +286,10 @@ export async function suggestAccountsForPostingsBatch(
       // For now, we'll simulate the response parsing
       // In production, this would call an LLM API with the agent config
 
-      // eslint-disable-next-line no-console
-      console.log('[INFO] Invoking LLM for account suggestions...');
-      // eslint-disable-next-line no-console
-      console.log('[DEBUG] Agent model:', agentConfig.model);
-      // eslint-disable-next-line no-console
-      console.log('[DEBUG] Agent temperature:', agentConfig.temperature);
-      // eslint-disable-next-line no-console
-      console.log('[DEBUG] Prompt length:', fullPrompt.length);
+      context.logger?.info('Invoking LLM for account suggestions...');
+      context.logger?.info(`Agent model: ${agentConfig.model}`);
+      context.logger?.info(`Agent temperature: ${agentConfig.temperature}`);
+      context.logger?.info(`Prompt length: ${fullPrompt.length}`);
 
       // TEMPORARY: Mock response for development
       // TODO: Replace with actual LLM invocation
@@ -307,10 +304,8 @@ export async function suggestAccountsForPostingsBatch(
         }
       });
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error(
-        '[WARN] Failed to generate account suggestions:',
-        error instanceof Error ? error.message : String(error)
+      context.logger?.error(
+        `[ERROR] Failed to generate account suggestions: ${error instanceof Error ? error.message : String(error)}`
       );
       // Return postings without suggestions on error
       return postings;

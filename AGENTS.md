@@ -36,10 +36,18 @@
 - **Explicit types**: prefer explicit type annotations over inference
 - **Return types**: optional (not required but recommended for public methods)
 
+### Logging & Output
+
+- **CRITICAL: NEVER use console.log, console.error, console.warn, console.info, or console.debug**
+- Console statements interfere with the OpenCode terminal UI and will break the user experience
+- Use the logger provided by the context (e.g., `logger?.info()`, `logger?.error()`) for all logging
+- All diagnostic output must go through proper logging mechanisms, not console
+- Return structured data in result objects instead of logging to console
+
 ### Error Handling
 
 - Check error type before accessing error properties: `error instanceof Error ? error.toString() : String(error)`
-- Log errors with `[ERROR]` prefix for consistency
+- Log errors with `[ERROR]` prefix for consistency using the logger (e.g., `logger?.error('[ERROR] ...')`)
 - Always provide error context when recording output
 
 ### Linting Rules
@@ -65,4 +73,5 @@
 - **Purpose**: General-purpose Bun module development
 
 ## Version Control (git)
+
 - **BREAKING CHANGES** need to be approved by user

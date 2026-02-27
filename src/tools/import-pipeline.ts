@@ -59,6 +59,7 @@ interface DryRunStepDetails {
     unknown?: number;
   };
   unknownPostings?: import('../utils/hledgerExecutor.ts').UnknownPostingWithSuggestion[];
+  detailsLog?: string;
 }
 
 /**
@@ -527,6 +528,7 @@ export async function executeDryRunStep(context: PipelineContext, logger?: Logge
             ? await extractRulePatternsFromFile(firstRulesFile)
             : undefined,
           yearJournalPath,
+          logger,
         };
 
         postingsWithSuggestions = await suggestAccountsForPostingsBatch(
@@ -534,10 +536,8 @@ export async function executeDryRunStep(context: PipelineContext, logger?: Logge
           suggestionContext
         );
       } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error(
-          '[WARN] Failed to generate account suggestions:',
-          error instanceof Error ? error.message : String(error)
+        logger?.error(
+          `[ERROR] Failed to generate account suggestions: ${error instanceof Error ? error.message : String(error)}`
         );
         // Continue without suggestions - they're helpful but not critical
         postingsWithSuggestions = allUnknownPostings;
@@ -545,19 +545,24 @@ export async function executeDryRunStep(context: PipelineContext, logger?: Logge
     }
   }
 
+  // Prepare detailsLog for dry run result if there are unknown postings
+  const detailsLog =
+    postingsWithSuggestions.length > 0
+      ? formatUnknownPostingsLog(postingsWithSuggestions)
+      : undefined;
+
   context.result.steps.dryRun = buildStepResult<DryRunStepDetails>(dryRunParsed.success, message, {
     success: dryRunParsed.success,
     summary: dryRunParsed.summary,
     unknownPostings: postingsWithSuggestions.length > 0 ? postingsWithSuggestions : undefined,
+    detailsLog,
   });
 
   if (!dryRunParsed.success) {
     // Log detailed unknown postings with suggestions
-    if (postingsWithSuggestions.length > 0) {
-      const detailsLog = formatUnknownPostingsLog(postingsWithSuggestions);
+    if (detailsLog) {
       logger?.error('Dry run found unknown accounts or errors');
-      // eslint-disable-next-line no-console
-      console.log(detailsLog);
+      logger?.info(detailsLog);
     }
 
     logger?.endSection();
