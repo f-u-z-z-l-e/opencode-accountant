@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.4...v0.4.5) (2026-02-27)
+
+
+### Bug Fixes
+
+* enhance unknown account handling with AI-powered suggestions ([2ae25f9](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/2ae25f9465ebf093c5b0563de805a914c9fa1ce5))
+
 ## [0.4.4](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.3...v0.4.4) (2026-02-27)
 
 
