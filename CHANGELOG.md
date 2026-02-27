@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.3...v0.4.4) (2026-02-27)
+
+
+### Bug Fixes
+
+* typo ([849f9ae](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/849f9ae198e07e0eab55d4d3897155d7e9786e6a))
+
 ## [0.4.3](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.2...v0.4.3) (2026-02-26)
 
 
