@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.5...v0.4.6) (2026-02-27)
+
+
+### Bug Fixes
+
+* replace console.log statements with logger to prevent OpenCode UI interference ([dd92fd8](https://github.com/f-u-z-z-l-e/opencode-accountant/commit/dd92fd8090b22f2748df406ab311a9a2172132cc))
+
 ## [0.4.5](https://github.com/f-u-z-z-l-e/opencode-accountant/compare/v0.4.4...v0.4.5) (2026-02-27)
 
 
