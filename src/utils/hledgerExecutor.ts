@@ -50,6 +50,15 @@ export interface UnknownPosting {
 }
 
 /**
+ * Extended UnknownPosting with AI-generated account suggestions
+ */
+export interface UnknownPostingWithSuggestion extends UnknownPosting {
+  suggestedAccount?: string;
+  suggestionConfidence?: 'high' | 'medium' | 'low';
+  suggestionReasoning?: string;
+}
+
+/**
  * Parses hledger print output to extract postings with unknown accounts.
  *
  * Example hledger output format:

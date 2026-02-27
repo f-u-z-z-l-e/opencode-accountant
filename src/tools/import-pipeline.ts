@@ -58,6 +58,7 @@ interface DryRunStepDetails {
     totalTransactions: number;
     unknown?: number;
   };
+  unknownPostings?: import('../utils/hledgerExecutor.ts').UnknownPostingWithSuggestion[];
 }
 
 /**
@@ -465,16 +466,104 @@ export async function executeDryRunStep(context: PipelineContext, logger?: Logge
     logger?.info(`Found ${dryRunParsed.summary.totalTransactions} transactions`);
   }
 
+  // Collect unknown postings and generate suggestions if dry run failed
+  let postingsWithSuggestions: import('../utils/hledgerExecutor.ts').UnknownPostingWithSuggestion[] =
+    [];
+  if (!dryRunParsed.success) {
+    const allUnknownPostings: import('../utils/hledgerExecutor.ts').UnknownPosting[] = [];
+    for (const file of dryRunParsed.files ?? []) {
+      if (file.unknownPostings && file.unknownPostings.length > 0) {
+        allUnknownPostings.push(...file.unknownPostings);
+      }
+    }
+
+    if (allUnknownPostings.length > 0) {
+      try {
+        const {
+          suggestAccountsForPostingsBatch,
+          loadExistingAccounts,
+          extractRulePatternsFromFile,
+        } = await import('../utils/accountSuggester.ts');
+
+        // Determine year journal path (same logic as account declarations step)
+        const config = context.configLoader(context.directory);
+        const pendingDir = path.join(context.directory, config.paths.pending);
+        const rulesDir = path.join(context.directory, config.paths.rules);
+        const csvFiles = findCsvFiles(
+          pendingDir,
+          context.options.provider,
+          context.options.currency
+        );
+        const rulesMapping = loadRulesMapping(rulesDir);
+
+        let yearJournalPath: string | undefined;
+        let firstRulesFile: string | undefined;
+
+        // Find first CSV with rules to determine year
+        for (const csvFile of csvFiles) {
+          const rulesFile = findRulesForCsv(csvFile, rulesMapping);
+          if (rulesFile) {
+            firstRulesFile = rulesFile;
+            try {
+              const result = await context.hledgerExecutor(['print', '-f', rulesFile]);
+              if (result.exitCode === 0) {
+                const years = extractTransactionYears(result.stdout);
+                if (years.size > 0) {
+                  const transactionYear = Array.from(years)[0];
+                  yearJournalPath = ensureYearJournalExists(context.directory, transactionYear);
+                  break;
+                }
+              }
+            } catch {
+              continue;
+            }
+          }
+        }
+
+        const suggestionContext = {
+          existingAccounts: yearJournalPath ? await loadExistingAccounts(yearJournalPath) : [],
+          rulesFilePath: firstRulesFile,
+          existingRules: firstRulesFile
+            ? await extractRulePatternsFromFile(firstRulesFile)
+            : undefined,
+          yearJournalPath,
+        };
+
+        postingsWithSuggestions = await suggestAccountsForPostingsBatch(
+          allUnknownPostings,
+          suggestionContext
+        );
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error(
+          '[WARN] Failed to generate account suggestions:',
+          error instanceof Error ? error.message : String(error)
+        );
+        // Continue without suggestions - they're helpful but not critical
+        postingsWithSuggestions = allUnknownPostings;
+      }
+    }
+  }
+
   context.result.steps.dryRun = buildStepResult<DryRunStepDetails>(dryRunParsed.success, message, {
     success: dryRunParsed.success,
     summary: dryRunParsed.summary,
+    unknownPostings: postingsWithSuggestions.length > 0 ? postingsWithSuggestions : undefined,
   });
 
   if (!dryRunParsed.success) {
-    logger?.error('Dry run found unknown accounts or errors');
+    // Log detailed unknown postings with suggestions
+    if (postingsWithSuggestions.length > 0) {
+      const detailsLog = formatUnknownPostingsLog(postingsWithSuggestions);
+      logger?.error('Dry run found unknown accounts or errors');
+      // eslint-disable-next-line no-console
+      console.log(detailsLog);
+    }
+
     logger?.endSection();
     context.result.error = 'Dry run found unknown accounts or errors';
-    context.result.hint = 'Add rules to categorize unknown transactions, then retry';
+    context.result.hint =
+      'Add rules to categorize unknown transactions, then retry. See details above for suggestions.';
     throw new Error('Dry run failed');
   }
 
@@ -485,6 +574,44 @@ export async function executeDryRunStep(context: PipelineContext, logger?: Logge
   }
 
   logger?.endSection();
+}
+
+/**
+ * Format unknown postings with suggestions for logging
+ */
+function formatUnknownPostingsLog(
+  postings: import('../utils/hledgerExecutor.ts').UnknownPostingWithSuggestion[]
+): string {
+  if (postings.length === 0) return '';
+
+  let log = '\n=== Unknown Postings Details ===\n\n';
+
+  for (const posting of postings) {
+    log += `📅 ${posting.date} | ${posting.description}\n`;
+    log += `   Amount: ${posting.amount} → ${posting.account}\n`;
+
+    if (posting.suggestedAccount) {
+      const icon =
+        posting.suggestionConfidence === 'high'
+          ? '✅'
+          : posting.suggestionConfidence === 'medium'
+            ? '⚠️'
+            : '💡';
+      log += `   ${icon} Suggested: ${posting.suggestedAccount} (${posting.suggestionConfidence})\n`;
+      if (posting.suggestionReasoning) {
+        log += `      ${posting.suggestionReasoning}\n`;
+      }
+    }
+
+    if (posting.csvRow) {
+      log += `   CSV: ${JSON.stringify(posting.csvRow, null, 2).split('\n').join('\n        ')}\n`;
+    }
+
+    log += '\n';
+  }
+
+  log += '=== End Unknown Postings ===\n';
+  return log;
 }
 
 /**
